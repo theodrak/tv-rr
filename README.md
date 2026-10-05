@@ -49,9 +49,10 @@ python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
 | `workbook` | The Excel trade log | none; asked on first use |
 | `timezone` | Timezone for Entry, Fill, Exit and Checked times in the sheet, and for chart axes. Any IANA name: `Europe/London`, `America/New_York`, `Australia/Sydney` | the computer's timezone |
 | `exports_dirs` | Folders searched (with subfolders) for TradingView CSV exports | none |
-| `gallery.elements` | What the charts draw; `config.py elements` lists the choices | VWAP, kernel line, SMA 50–1000 |
+| `gallery.elements` | What the charts draw; `config.py elements` lists the choices | session bar, VWAP, kernel line, SMA 50–1000 |
 | `gallery.images_dir` | Where chart images (PNG) are saved | a `Charts` folder beside the workbook |
 | `gallery.notes_dir` | Where the gallery page (Markdown) is saved | beside the workbook |
+| `gallery.timeframe` | Bar size, in minutes, every chart uses (e.g. `5`) | the timeframe each trade was drawn on |
 | `gallery.link_style` | `obsidian` embeds images as `![[file.png]]`; `markdown` as `![](Charts/file.png)` for GitHub, VS Code or any Markdown viewer | `obsidian` |
 | `default_session_start` | When a trading day starts, for daily bars, ATR and VWAP | `17:00 America/New_York` |
 | `symbols.<SYMBOL>.tick` / `.session_start` | Per-instrument tick size and session start | learned / the default |

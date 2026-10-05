@@ -26,8 +26,11 @@ C = dict(up_fill="#b9e4bc", up_edge="#1b5e20", dn_fill="#111111", dn_edge="#1111
          ema9="#26c6da", vwap="#e57373", kern_dn="#d32f2f", kern_up="#26a69a",
          prior_day="#2962ff", prior_week="#3a5a18", va="#9e9e9e", poc="#616161")
 SMAS = ((1000, 3.2), (500, 3.2), (200, 3.2), (100, 1.2), (50, 1.2))
-SESSIONS = [("Asia", (9, 0), (15, 0), "Asia/Tokyo", "#8e7cc3"), ("Europe", (8, 0), (16, 30), "Europe/London", "#ecb23d"),
-            ("US", (9, 30), (16, 0), "America/New_York", "#5ea76f")]
+# (label, start, end, market timezone, colour); later rows win where sessions overlap
+SESSIONS = [("Asia", (9, 0), (15, 0), "Asia/Tokyo", "#8e7cc3"),
+            ("EU Pre", (8, 0), (9, 0), "Europe/Berlin", "#e93232"), ("EU Open", (9, 0), (10, 30), "Europe/Berlin", "#ecb23d"),
+            ("EU Aftn", (10, 30), (17, 30), "Europe/Berlin", "#d2a1a1"), ("US Pre", (8, 30), (9, 30), "America/New_York", "#7de495"),
+            ("US Open", (9, 30), (10, 30), "America/New_York", "#5ea76f"), ("US Aftn", (10, 30), (16, 0), "America/New_York", "#cfe7d5")]
 rgb = lambda c: c if isinstance(c, str) else c[:3]
 
 

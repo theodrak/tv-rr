@@ -14,7 +14,7 @@ HOME = Path(os.environ.get("TV_RR_HOME", Path.home() / ".tv-rr")).expanduser()
 FILE = HOME / "config.json"
 DATA = HOME / "data"
 
-DEFAULT_ELEMENTS = ["vwap", "kernel", "sma50", "sma100", "sma200", "sma500", "sma1000"]
+DEFAULT_ELEMENTS = ["sessions", "vwap", "kernel", "sma50", "sma100", "sma200", "sma500", "sma1000"]
 ALL_ELEMENTS = {
     "vwap": "Session VWAP",
     "kernel": "Kernel regression line from the Lorentzian Classification indicator (red falling, teal rising)",
@@ -23,7 +23,7 @@ ALL_ELEMENTS = {
     "prior_day": "Prior session high and low",
     "prior_week": "Prior week high and low",
     "prior_value": "Prior session value area and POC (needs volume)",
-    "sessions": "Asia / Europe / US session markers along the top",
+    "sessions": "Session bar along the top: Asia, EU pre-market / open / afternoon, US pre-market / open / afternoon",
     "round_numbers": "Round-number price lines in the right margin",
 }
 DEFAULTS = {
@@ -32,7 +32,8 @@ DEFAULTS = {
     "exports_dirs": [],
     "default_session_start": "17:00 America/New_York",
     "symbols": {},
-    "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian"},
+    "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
+                "timeframe": None},
 }
 
 

@@ -57,7 +57,7 @@ Two charts per closed trade, both with the risk/reward tool drawn on:
 It also writes a Markdown page with a summary table and every trade.
 
 **Before the first gallery, ask the user which elements to draw** and save the answer with
-`config.py set gallery.elements '["vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
+`config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
 `config.py elements` lists every choice:
 
 | Element | What it draws |
@@ -68,10 +68,11 @@ It also writes a Markdown page with a summary table and every trade.
 | `ema9` | EMA 9 |
 | `prior_day` / `prior_week` | Prior session / prior week high and low |
 | `prior_value` | Prior session value area and POC (needs volume) |
-| `sessions` | Asia / Europe / US markers |
+| `sessions` | The session bar along the top: Asia, EU pre-market / open / afternoon, US pre-market / open / afternoon, each in its market's local time |
 | `round_numbers` | Round-number price lines |
 
 Also ask where images and the page should go:
 - `gallery.images_dir`, by default a `Charts` folder beside the workbook;
 - `gallery.notes_dir`, by default beside the workbook;
-- `gallery.link_style`: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`).
+- `gallery.link_style`: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
+- `gallery.timeframe`: chart every trade at one bar size, e.g. `5`. By default each trade is charted at the timeframe it was drawn on.

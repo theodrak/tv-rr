@@ -3,7 +3,8 @@ on, plus a Markdown page showing them all.
 
 usage: gallery.py [--file WORKBOOK] [--note NOTE.md] [--title TITLE] [--only YYYY-MM-DD …] [--symbol SYMBOL]
 
-Charts use the trade's own timeframe when its bars are stored (else 5m, else the nearest held). "At entry" shows only
+Charts use gallery.timeframe (e.g. 5) when set, otherwise the trade's own timeframe when its bars are stored (else 5m,
+else the nearest held). "At entry" shows only
 what was visible at the fill: with 1m data the entry candle is rebuilt up to the fill minute; without it, the entry
 candle is drawn from its open to the entry price. Which overlays appear is config gallery.elements. Images go to
 gallery.images_dir (default: a "Charts" folder beside the workbook); the page to gallery.notes_dir (default: beside the
@@ -81,7 +82,7 @@ def fill_point(fine, t0, e):
 def draw_pair(r, label, tag, images_dir, elements):
     sym = r["Symbol"]; long_ = r["Direction"] == "Long"; e, sl, tp = r["Entry"], r["Stop"], r["TP planned"]
     t0 = int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp())
-    m = chart_minutes(sym, r.get("Timeframe"))
+    m = chart_minutes(sym, config.load()["gallery"].get("timeframe") or r.get("Timeframe"))
     if m is None: return None
     bars = prices.load(sym, m); fine, ftf = prices.bars_for(sym, t0)
     if not bars or not fine: return None
