@@ -1,6 +1,9 @@
 {
   "name": "tv-rr",
-  "owner": { "name": "Theo Drakakis" },
+  "description": "Claude Code skills for logging and analysing TradingView risk/reward trades.",
+  "owner": {
+    "name": "Theo Drakakis"
+  },
   "plugins": [
     {
       "name": "tv-rr",
