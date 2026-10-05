@@ -41,7 +41,7 @@ Claude asks for these on first use. Change them any time by asking Claude ("show
 python3 skills/tv-rr-trades/scripts/config.py show
 python3 skills/tv-rr-trades/scripts/config.py set timezone Europe/London
 python3 skills/tv-rr-trades/scripts/config.py set exports_dirs '["~/Downloads/TradingView exports", "~/Trading/Exports"]'
-python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
+python3 skills/tv-rr-trades/scripts/config.py set gallery.format '["html","pdf"]'
 ```
 
 | Setting | What it does | Default |
@@ -52,9 +52,9 @@ python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
 | `gallery.elements` | What the charts draw; `config.py elements` lists the choices | session bar, VWAP, kernel line, SMA 50–1000 |
 | `gallery.images_dir` | Where chart images (PNG) are saved | a `Charts` folder beside the workbook |
 | `gallery.notes_dir` | Where the gallery page (Markdown) is saved | beside the workbook |
-| `gallery.format` | Gallery outputs: `html` (any browser, and adds an "Open chart" link per trade to the workbook), `pdf`, `markdown` | `["markdown"]` |
+| `gallery.format` | Gallery outputs: `html` (any browser, and adds an "Open chart" link per trade to the workbook), `pdf`, `markdown` | `["html"]` |
 | `gallery.timeframe` | Bar size, in minutes, every chart uses (e.g. `5`) | the timeframe each trade was drawn on |
-| `gallery.link_style` | `obsidian` embeds images as `![[file.png]]`; `markdown` as `![](Charts/file.png)` for GitHub, VS Code or any Markdown viewer | `obsidian` |
+| `gallery.link_style` | For the Markdown page: `obsidian` embeds images as `![[file.png]]`; `markdown` as `![](Charts/file.png)` for GitHub, VS Code or any Markdown viewer | `obsidian` |
 | `default_session_start` | When a trading day starts, for daily bars, ATR and VWAP | `17:00 America/New_York` |
 | `symbols.<SYMBOL>.tick` / `.session_start` | Per-instrument tick size and session start | learned / the default |
 
