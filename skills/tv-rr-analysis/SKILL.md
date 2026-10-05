@@ -60,34 +60,9 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **`markdown`:** a page for Obsidian, VS Code or GitHub.
 
 **Chart links in the workbook.** With `html`, every trade gets a **Chart** column in the workbook: "Open chart" jumps straight to that trade in the gallery.
-- **Each trade's section is anchored** on its symbol and TradingView drawing id. A small page per trade in `<gallery>_files/trades/` redirects to it, because Excel drops `#anchors` from links to local files.
-- **Links are relative to the workbook.** Moving the workbook and gallery together, for example by zipping the folder, keeps them working.
+- **Each trade's section is anchored** on its symbol and TradingView drawing id. A one-line jump page per trade redirects to the anchor, because Excel strips `#anchors` (and `?queries`) from links to local files.
+- **On a Mac the jump pages live in Office's own folder** (`~/Library/Group Containers/UBF8T346G9.Office/tv-rr/<id>/`). Mac Excel is sandboxed: it asks permission for every other file a link opens and can't be given a folder, but it opens files there without asking. Those links are absolute, so if the gallery folder moves, run the gallery again.
+- **Elsewhere the jump pages sit in `<gallery>_files/trades/`** and are linked relative to the workbook. On Windows, Excel may warn that hyperlinks can be harmful; clicking **Yes** opens the trade.
 - **The workbook must be closed** for the links to be written. `enrich.py` refreshes them after every update.
-- **Excel for Mac asks permission for every linked file.** It is sandboxed and asks again for each new file. The first time a gallery adds Chart links, and whenever a user says the links keep asking, tell them:
-  1. Click any **Open chart** link in the workbook.
-  2. In the **Grant File Access** dialog, choose the **folder** that holds the gallery, not the file it names. The script prints the folder's name. Click **Grant Access**.
-  3. Excel remembers the folder, so every other trade's link opens without asking.
+- **If a user says the links ask for permission,** check that the gallery was generated on this Mac with the current version, then rerun `gallery.py`.
 
-  On Windows, Excel may warn that hyperlinks can be harmful; clicking **Yes** opens the trade.
-
-**Before the first gallery, ask the user which elements to draw** and save the answer with
-`config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
-`config.py elements` lists every choice:
-
-| Element | What it draws |
-|---|---|
-| `vwap` | Session VWAP |
-| `kernel` | The Lorentzian Classification kernel regression line (red falling, teal rising) |
-| `sma50` … `sma1000` | Simple moving averages 50, 100, 200, 500, 1000 |
-| `ema9` | EMA 9 |
-| `prior_day` / `prior_week` | Prior session / prior week high and low |
-| `prior_value` | Prior session value area and POC (needs volume) |
-| `sessions` | The session bar along the top: Asia, EU pre-market / open / afternoon, US pre-market / open / afternoon, each in its market's local time |
-| `round_numbers` | Round-number price lines |
-
-Also ask where images and the page should go:
-- `gallery.images_dir`, by default a `Charts` folder beside the workbook;
-- `gallery.notes_dir`, by default beside the workbook;
-- `gallery.link_style`, for the Markdown page only: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
-- `gallery.format`: any of `html`, `pdf`, `markdown`. The default is `["html"]`; Obsidian users usually want `["markdown","html"]`;
-- `gallery.timeframe`: chart every trade at one bar size, e.g. `5`. By default each trade is charted at the timeframe it was drawn on.

@@ -58,10 +58,11 @@ python3 skills/tv-rr-trades/scripts/config.py set gallery.format '["html","pdf"]
 | `default_session_start` | When a trading day starts, for daily bars, ATR and VWAP | `17:00 America/New_York` |
 | `symbols.<SYMBOL>.tick` / `.session_start` | Per-instrument tick size and session start | learned / the default |
 
-**Chart links in Excel for Mac.** Mac Excel is sandboxed and asks permission for every file a link opens. The first time
-the "Grant File Access" dialog appears, select the **folder** that holds the gallery (not the single file) and click
-**Grant Access**; every other trade's link then opens without asking. Windows Excel may show a "hyperlinks can be harmful"
-warning instead.
+**Chart links and Excel for Mac.** Mac Excel is sandboxed: it asks permission for every file a link opens, can't be
+given a folder, and strips `#anchors` from links. So on a Mac the gallery writes a tiny jump page per trade into Office's
+own folder (`~/Library/Group Containers/UBF8T346G9.Office/tv-rr/`), which Excel opens without asking, and each one sends
+the browser to that trade's anchor in the gallery. These links use absolute paths: if you move the gallery folder, run
+the gallery again to refresh them. Windows Excel may show a "hyperlinks can be harmful" warning; click Yes.
 
 **Changing the timezone** moves every time in the sheet to the new zone on the next run, including times copied from TradingView; the UTC entry time is kept as the reference.
 The settings file is `~/.tv-rr/config.json` (set `TV_RR_HOME` to keep it elsewhere).

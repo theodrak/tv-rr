@@ -144,6 +144,23 @@ def enrich(path):
     return records
 
 
+OFFICE_CONTAINER = Path.home() / "Library" / "Group Containers" / "UBF8T346G9.Office"
+
+
+def jump_dir(page):
+    """Where the one-line per-trade pages that jump to a trade's #anchor in the HTML gallery live.
+
+    Excel for Mac is sandboxed: it asks permission for every file a link opens (and cannot be given a folder), and it
+    strips both #anchors and ?queries from links. The one place it may open files without asking is Office's own group
+    container, so on a Mac the jump pages go there (one folder per gallery) and the workbook links to them by absolute
+    path. Elsewhere they sit beside the gallery and are linked relative to the workbook."""
+    import hashlib, sys
+    page = Path(page).resolve()
+    if sys.platform == "darwin" and OFFICE_CONTAINER.exists():
+        return OFFICE_CONTAINER / "tv-rr" / hashlib.sha1(str(page).encode()).hexdigest()[:12]
+    return page.with_name(page.stem + "_files") / "trades"
+
+
 def add_chart_links(path, page=None):
     """Fill the Chart column: for each trade, a link (relative to the workbook) to its section of the HTML gallery.
     Without `page`, look for the gallery beside the workbook or in gallery.notes_dir. Returns how many were linked."""
@@ -158,7 +175,7 @@ def add_chart_links(path, page=None):
         found = [p for d in dirs if d and d.exists() for p in d.glob("*- trade gallery.html")]
         if not found: return 0
         page = max(found, key=lambda p: p.stat().st_mtime)
-    page = Path(page); tdir = page.with_name(page.stem + "_files") / "trades"
+    page = Path(page); tdir = jump_dir(page); in_container = OFFICE_CONTAINER in tdir.parents
     wb = load_workbook(path); ws = wb["Trades"]; head = [c.value for c in ws[1]]
     if "Chart" not in head:
         ws.cell(1, len(head) + 1, "Chart").font = Font(bold=True); head.append("Chart")
@@ -169,7 +186,8 @@ def add_chart_links(path, page=None):
         if not sym or not did: continue
         target = tdir / ("t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{sym}-{did}") + ".html")
         if not target.exists(): continue
-        cell.value = "Open chart"; cell.hyperlink = os.path.relpath(target, path.parent).replace(os.sep, "/")
+        cell.value = "Open chart"
+        cell.hyperlink = target.as_uri() if in_container else os.path.relpath(target, path.parent).replace(os.sep, "/")
         cell.font = Font(color="0563C1", underline="single"); n += 1
     wb.save(path)
     return n

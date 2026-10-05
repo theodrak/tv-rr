@@ -187,9 +187,8 @@ def main():
             sys.path.insert(0, str(Path(__file__).resolve().parent)); from enrich import add_chart_links
             n = add_chart_links(wbp, p); print(f"workbook: {n} trades linked to the gallery (Chart column)")
             if n and sys.platform == "darwin":
-                print(f"Excel for Mac asks permission for each linked file. The first time it does, choose the folder "
-                      f"\"{p.parent.name}\" in the Grant File Access dialog (not the single file) and click Grant Access; "
-                      f"every other link then opens without asking.")
+                print("Excel for Mac: the links open Office's own copy of a jump page for each trade, so Excel shouldn't ask "
+                      "permission. If the gallery folder moves, run the gallery again to refresh the links.")
         except PermissionError:
             print("workbook is open in Excel — close it and run gallery.py again to add the Chart links")
     if "pdf" in fmts: p = write_pdf(note.with_suffix(".pdf"), label, wbp, made); print(f"pdf: {p}")
@@ -263,14 +262,10 @@ def anchor(t):
     return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
 
 
-def trade_links_dir(page):
-    return page.with_name(page.stem + "_files") / "trades"
-
-
 def write_html(path, label, wbp, made):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
-    Each trade's section has an id (anchor()), and a one-line page per trade in <page>_files/trades/ jumps to it: Excel
-    drops the #anchor from links to local files, so the workbook's Chart column links to those pages instead."""
+    Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
+    container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     import html as h, os
     first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
@@ -289,10 +284,11 @@ img{{width:100%;margin:6px 0;border:1px solid #eee}}</style></head><body>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Click a chart to open it full size.</p>
 {body}</body></html>""")
-    d = trade_links_dir(path); d.mkdir(parents=True, exist_ok=True)
+    from enrich import OFFICE_CONTAINER, jump_dir
+    d = jump_dir(path); d.mkdir(parents=True, exist_ok=True); absolute = OFFICE_CONTAINER in d.parents
     for old in d.glob("*.html"): old.unlink()
     for t, _ in made:
-        to = f"../../{path.name}#{anchor(t)}".replace(" ", "%20")
+        to = (path.resolve().as_uri() if absolute else f"../../{path.name}".replace(" ", "%20")) + f"#{anchor(t)}"
         (d / f"{anchor(t)}.html").write_text(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={to}">'
                                             f'<script>location.replace("{to}")</script><a href="{to}">Open the trade in the gallery</a>')
     return path
