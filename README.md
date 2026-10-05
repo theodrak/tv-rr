@@ -56,7 +56,7 @@ python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
 | `default_session_start` | When a trading day starts, for daily bars, ATR and VWAP | `17:00 America/New_York` |
 | `symbols.<SYMBOL>.tick` / `.session_start` | Per-instrument tick size and session start | learned / the default |
 
-**Changing the timezone** re-labels every row's times on the next run; the UTC entry time is kept as the reference.
+**Changing the timezone** moves every time in the sheet to the new zone on the next run, including times copied from TradingView; the UTC entry time is kept as the reference.
 The settings file is `~/.tv-rr/config.json` (set `TV_RR_HOME` to keep it elsewhere).
 
 ## Price data

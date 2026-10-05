@@ -258,7 +258,18 @@ def load(path):
     from openpyxl import load_workbook
     if not path.exists(): return []
     ws = load_workbook(path)["Trades"]; rows = list(ws.iter_rows(values_only=True))
-    head = [legacy_name(h) for h in rows[0]]; return [dict(zip(head, r)) for r in rows[1:] if any(v is not None for v in r)]
+    head = [legacy_name(h) for h in rows[0]]
+    out = [dict(zip(head, r)) for r in rows[1:] if any(v is not None for v in r)]
+    # times copied from TradingView are stored as local times: move them if the timezone setting has changed
+    note = ws.cell(1, head.index("Entry time") + 1).comment if "Entry time" in head else None
+    m = re.search(r"shown in (\S+)\.", note.text) if note else None
+    old = m.group(1) if m else ("Australia/Sydney" if any("(Sydney)" in str(h) for h in rows[0]) else None)
+    if old and old != config.tz_name():
+        from zoneinfo import ZoneInfo
+        for r in out:
+            if isinstance(r.get("TradingView exit"), dt.datetime):
+                r["TradingView exit"] = r["TradingView exit"].replace(tzinfo=ZoneInfo(old)).astimezone(TZ).replace(tzinfo=None)
+    return out
 
 
 def legacy_name(h):
