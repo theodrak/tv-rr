@@ -270,20 +270,56 @@ def write_html(path, label, wbp, made):
     first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
     rows = "".join("<tr>" + "".join(f"<td>{h.escape(str(c))}</td>" for c in r) + "</tr>" for r in summary(made))
+    syms = len({t["Symbol"] for t, _ in made}) > 1
+    side = "".join(
+        f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}">'
+        f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
+        f'<span>{"Win" if t["Outcome"] == "TP" else "Loss"} · {h.escape(t["Direction"])}'
+        + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in made)
+    def dims(p):
+        import struct
+        with open(p, "rb") as fh: head = fh.read(24)
+        w, ht = struct.unpack(">II", head[16:24]); return f'width="{w}" height="{ht}"'
     body = "".join(
         f'<section id="{anchor(t)}"><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
-        f'<a href="{rel(p1)}"><img src="{rel(p1)}" loading="lazy" alt="at entry"></a>'
-        f'<a href="{rel(p2)}"><img src="{rel(p2)}" loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in made)
+        f'<a href="{rel(p1)}" target="_blank"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
+        f'<a href="{rel(p2)}" target="_blank"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in made)
+    css = """
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#222;background:#fff}
+nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-right:1px solid #e5e5e5;background:#fafafa;padding:12px 8px}
+nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;margin:4px 8px 8px}
+nav .filter{display:flex;gap:4px;margin:0 6px 8px} nav .filter button{flex:1;font:12px inherit;padding:3px 0;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+nav .filter button.on{background:#222;color:#fff;border-color:#222}
+nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
+nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
+nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828}
+nav a:hover{background:#eee} nav a.active{background:#e3f2fd}
+main{margin-left:230px;padding:24px 28px;max-width:1300px}
+h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
+section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:8px} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
+img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
+@media (max-width:800px){nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
+"""
+    js = """
+const links=[...document.querySelectorAll('nav a')], byId=Object.fromEntries(links.map(a=>[a.hash.slice(1),a]));
+function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id));const a=byId[id];
+  if(a){const n=a.parentElement,r=a.getBoundingClientRect(),q=n.getBoundingClientRect();if(r.top<q.top||r.bottom>q.bottom)a.scrollIntoView({block:'nearest'})}}
+const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
+  if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
+document.querySelectorAll('main section').forEach(s=>obs.observe(s));
+document.querySelectorAll('nav .filter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav .filter button').forEach(x=>x.classList.toggle('on',x===b));
+  const f=b.dataset.f;links.forEach(a=>a.style.display=(f==='all'||a.classList.contains(f))?'':'none');
+  document.querySelectorAll('main section').forEach(s=>s.style.display=(f==='all'||s.querySelector('h2').classList.contains(f))?'':'none')});
+function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
+window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
+"""
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{h.escape(label)} — trade gallery</title><style>
-body{{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:1200px;margin:24px auto;padding:0 16px;color:#222;background:#fff}}
-h1{{margin:0 0 4px}} .sub{{color:#666}} table{{border-collapse:collapse;margin:16px 0}} td,th{{border:1px solid #ddd;padding:4px 12px;text-align:center}}
-section{{border-top:1px solid #eee;padding:16px 0}} h2{{font-size:17px;margin:0}} .tp{{color:#2e7d32}} .sl{{color:#c62828}}
-img{{width:100%;margin:6px 0;border:1px solid #eee}}</style></head><body>
-<h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
+<title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
+<nav><h3>{len(made)} trades</h3><div class="filter"><button class="on" data-f="all">All</button><button data-f="tp">Wins</button><button data-f="sl">Losses</button></div>{side}</nav>
+<main><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
-<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Click a chart to open it full size.</p>
-{body}</body></html>""")
+<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
+{body}</main><script>{js}</script></body></html>""")
     from enrich import OFFICE_CONTAINER, jump_dir
     d = jump_dir(path); d.mkdir(parents=True, exist_ok=True); absolute = OFFICE_CONTAINER in d.parents
     for old in d.glob("*.html"): old.unlink()

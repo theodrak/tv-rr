@@ -55,7 +55,7 @@ Two charts per closed trade, both with the risk/reward tool drawn on:
 - **follow-through:** to the exit, plus a little after.
 
 It also writes the gallery in the formats set by `gallery.format` (or `--format`):
-- **`html`:** one page that opens in any browser, with charts that open full size when clicked. Recommend it to anyone who doesn't use Obsidian.
+- **`html`:** one page that opens in any browser. A sidebar lists every trade (date, time, win or loss, direction, plus the symbol in a mixed log), with All / Wins / Losses filters. Clicking a trade scrolls to it, the sidebar highlights the trade in view as you scroll, and charts open full size when clicked. Recommend it to anyone who doesn't use Obsidian.
 - **`pdf`:** a summary page, then one A4 page per trade. Use it for sharing and printing.
 - **`markdown`:** a page for Obsidian, VS Code or GitHub.
 
