@@ -22,7 +22,16 @@ In Claude Code:
 /plugin install tv-rr@tv-rr
 ```
 
-Requires Python 3.9+ and either [uv](https://docs.astral.sh/uv/) or `pip install openpyxl matplotlib`.
+**Requirements:** [uv](https://docs.astral.sh/uv/), a small tool that downloads Python and the libraries the skills
+need the first time they run. No separate Python install is needed. If you don't have it, Claude offers to install it,
+or you can install it yourself:
+
+```
+curl -LsSf https://astral.sh/uv/install.sh | sh                                   # macOS / Linux
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"   # Windows
+```
+
+If you already have Python 3.9+, that works too: `pip install openpyxl matplotlib`.
 
 ## Set up
 

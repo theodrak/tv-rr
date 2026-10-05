@@ -8,6 +8,23 @@ description: Logs TradingView Long/Short Position (risk/reward) tools copied to 
 Scripts are in this skill's `scripts/` folder. Run them with `uv run -q --with openpyxl python scripts/<name>.py`
 (or plain `python3` once `openpyxl` is installed).
 
+## Before anything else: check uv or Python
+
+Run `uv --version`. If it works, use `uv run …` for every script: uv fetches its own Python and the libraries (openpyxl,
+matplotlib) the first time, so nothing else is needed.
+
+If it fails, try `python3 --version` (on Windows, `py --version`). With Python 3.9+ present, run the scripts with it
+after `python3 -m pip install --user openpyxl matplotlib`.
+
+If neither works, **tell the user nothing can run yet and offer to install uv**, the one small tool the skills need. It
+installs Python for them. Ask first and install only on a yes, because it adds software to their computer:
+- macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+
+After installing, open a new terminal (or use the full path the installer prints, e.g. `~/.local/bin/uv`) and run
+`uv --version` to confirm. Don't send macOS users to `python3` first: on a Mac without it, that only offers Apple's
+large Command Line Tools download. On Windows, typing `python` may open the Microsoft Store instead of running anything.
+
 ## First run: set up
 
 Settings live in `~/.tv-rr/config.json` (or `$TV_RR_HOME`), outside the plugin, so updates never lose them.

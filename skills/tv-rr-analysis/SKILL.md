@@ -5,7 +5,8 @@ description: What-if analysis and chart galleries for the TradingView trade log 
 
 # Trade log: what-if analysis and galleries
 
-Scripts are in this skill's `scripts/` folder. They use the `tv-rr-trades` skill's settings (`~/.tv-rr/config.json`) and price
+Scripts are in this skill's `scripts/` folder. Check for uv or Python first, exactly as the `tv-rr-trades` skill
+describes ("Before anything else"), and offer to install uv if neither is there. They use the `tv-rr-trades` skill's settings (`~/.tv-rr/config.json`) and price
 store, so set that skill up first.
 
 ## What-if columns and the Breakdown sheet
