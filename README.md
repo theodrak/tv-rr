@@ -18,7 +18,7 @@ Works for any instrument TradingView can export, on macOS, Windows and Linux.
 In Claude Code:
 
 ```
-/plugin marketplace add <github-user>/tv-rr
+/plugin marketplace add theodrak/tv-rr
 /plugin install tv-rr@tv-rr
 ```
 
