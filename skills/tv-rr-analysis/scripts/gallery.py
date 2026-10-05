@@ -186,6 +186,10 @@ def main():
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent)); from enrich import add_chart_links
             n = add_chart_links(wbp, p); print(f"workbook: {n} trades linked to the gallery (Chart column)")
+            if n and sys.platform == "darwin":
+                print(f"Excel for Mac asks permission for each linked file. The first time it does, choose the folder "
+                      f"\"{p.parent.name}\" in the Grant File Access dialog (not the single file) and click Grant Access; "
+                      f"every other link then opens without asking.")
         except PermissionError:
             print("workbook is open in Excel — close it and run gallery.py again to add the Chart links")
     if "pdf" in fmts: p = write_pdf(note.with_suffix(".pdf"), label, wbp, made); print(f"pdf: {p}")

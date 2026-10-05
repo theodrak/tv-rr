@@ -63,7 +63,12 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **Each trade's section is anchored** on its symbol and TradingView drawing id. A small page per trade in `<gallery>_files/trades/` redirects to it, because Excel drops `#anchors` from links to local files.
 - **Links are relative to the workbook.** Moving the workbook and gallery together, for example by zipping the folder, keeps them working.
 - **The workbook must be closed** for the links to be written. `enrich.py` refreshes them after every update.
-- **Excel for Mac asks permission for every linked file.** Tell the user to select the gallery's **folder** in the "Grant File Access" dialog once, so the rest open without asking.
+- **Excel for Mac asks permission for every linked file.** It is sandboxed and asks again for each new file. The first time a gallery adds Chart links, and whenever a user says the links keep asking, tell them:
+  1. Click any **Open chart** link in the workbook.
+  2. In the **Grant File Access** dialog, choose the **folder** that holds the gallery, not the file it names. The script prints the folder's name. Click **Grant Access**.
+  3. Excel remembers the folder, so every other trade's link opens without asking.
+
+  On Windows, Excel may warn that hyperlinks can be harmful; clicking **Yes** opens the trade.
 
 **Before the first gallery, ask the user which elements to draw** and save the answer with
 `config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
