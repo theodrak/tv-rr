@@ -33,6 +33,32 @@ Ask Claude to "set up my TradingView trade log". It will ask you three things:
 
 Settings are kept in `~/.tv-rr/config.json`, outside the plugin.
 
+## Settings
+
+Claude asks for these on first use. Change them any time by asking Claude ("show times in London time", "my exports are now in ~/Trading/Exports"), or by running the settings script yourself:
+
+```
+python3 skills/tv-rr-trades/scripts/config.py show
+python3 skills/tv-rr-trades/scripts/config.py set timezone Europe/London
+python3 skills/tv-rr-trades/scripts/config.py set exports_dirs '["~/Downloads/TradingView exports", "~/Trading/Exports"]'
+python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
+```
+
+| Setting | What it does | Default |
+|---|---|---|
+| `workbook` | The Excel trade log | none; asked on first use |
+| `timezone` | Timezone for Entry, Fill, Exit and Checked times in the sheet, and for chart axes. Any IANA name: `Europe/London`, `America/New_York`, `Australia/Sydney` | the computer's timezone |
+| `exports_dirs` | Folders searched (with subfolders) for TradingView CSV exports | none |
+| `gallery.elements` | What the charts draw; `config.py elements` lists the choices | VWAP, kernel line, SMA 50–1000 |
+| `gallery.images_dir` | Where chart images (PNG) are saved | a `Charts` folder beside the workbook |
+| `gallery.notes_dir` | Where the gallery page (Markdown) is saved | beside the workbook |
+| `gallery.link_style` | `obsidian` embeds images as `![[file.png]]`; `markdown` as `![](Charts/file.png)` for GitHub, VS Code or any Markdown viewer | `obsidian` |
+| `default_session_start` | When a trading day starts, for daily bars, ATR and VWAP | `17:00 America/New_York` |
+| `symbols.<SYMBOL>.tick` / `.session_start` | Per-instrument tick size and session start | learned / the default |
+
+**Changing the timezone** re-labels every row's times on the next run; the UTC entry time is kept as the reference.
+The settings file is `~/.tv-rr/config.json` (set `TV_RR_HOME` to keep it elsewhere).
+
 ## Price data
 
 Outcomes, MAE/MFE, ATR, VWAP and charts need bars for each instrument you trade.
