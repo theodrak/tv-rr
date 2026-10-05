@@ -1,0 +1,11 @@
+{
+  "name": "tv-rr",
+  "owner": { "name": "Theo Drakakis" },
+  "plugins": [
+    {
+      "name": "tv-rr",
+      "source": "./",
+      "description": "TradingView risk/reward trade log and analysis for any instrument."
+    }
+  ]
+}
