@@ -43,9 +43,24 @@ When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown 
 
 Outcomes are checked on stored bars: 1-minute wherever they cover a trade, otherwise the finest bars held.
 
-- **From TradingView exports:** in TradingView, open the chart and choose "Export chart data…", then save the CSV into an export folder. `scripts/prices.py ingest` reads every folder, works out the symbol from the file name TradingView gives it (`OANDA_EURUSD, 5.csv`) and the bar size from the data, and merges overlapping files. `extract.py` runs it automatically, and unchanged files cost nothing. `prices.py status` lists what is held.
-- **Columns worth exporting:** add **Volume** to the chart so VWAP can be computed. A **VWAP** or **Kernel Regression Estimate** column on the chart is used directly.
-- **Top-up from the TradingView MCP server, if connected:** when a trade says **Open** or **No price data yet**, fetch bars with `mcp-tv-get-ohlcv`. Save the returned JSON to a file and run `prices.py add SYMBOL 5m FILE`, then `extract.py --recheck`. Keep top-ups small: a few hundred bars covering the gap. Exports are the main source, because the MCP holds only a few days of 1-minute history.
+**Helping the user export from TradingView** (the README has the full guide):
+1. **Set up the chart.** Open the instrument at the bar size to export, then add:
+   - **Volume**, needed for VWAP;
+   - **VWAP** with anchor Session;
+   - **Machine Learning: Lorentzian Classification** (jdehorty, default settings), for the kernel line.
+
+   SMAs and ATR are optional: the skill calculates them itself.
+2. **Load the history.** Scroll left until the chart reaches back far enough; the export contains only the loaded bars.
+3. **Export.** Use the arrow next to the layout name at the top right, then **Export chart data…**, **ISO time**, **Export**. Save into the exports folder, **keeping TradingView's file name** (`OANDA_EURUSD, 1.csv`): it names the symbol.
+4. **Which bar sizes.** 1-minute for the trades' period gives the most accurate checks. 5-minute reaches further back. Paid TradingView plans only.
+
+**Ingesting:**
+- **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
+  - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present.
+  - **Builds 5m, 15m, 30m and 60m bars from 1m** wherever no export of that size exists; an exported bar always wins.
+- **`prices.py status`** lists what is held.
+- **`prices.py export SYMBOL 1m out.csv`** writes one merged CSV.
+- **TradingView MCP top-up, if connected:** when a trade says **Open** or **No price data yet**, fetch bars with `mcp-tv-get-ohlcv`. Save the returned JSON to a file and run `prices.py add SYMBOL 5m FILE`, then `extract.py --recheck`. Keep top-ups to a few hundred bars, because the MCP holds only a few days of 1m history.
 
 ## Rules the script relies on (don't "simplify" them)
 

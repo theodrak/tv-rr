@@ -59,15 +59,50 @@ python3 skills/tv-rr-trades/scripts/config.py set gallery.link_style markdown
 **Changing the timezone** moves every time in the sheet to the new zone on the next run, including times copied from TradingView; the UTC entry time is kept as the reference.
 The settings file is `~/.tv-rr/config.json` (set `TV_RR_HOME` to keep it elsewhere).
 
-## Price data
+## Price data: exporting from TradingView
 
-Outcomes, MAE/MFE, ATR, VWAP and charts need bars for each instrument you trade.
+Outcomes, MAE/MFE, ATR, VWAP and charts need price bars for each instrument you trade. They come from TradingView's
+**Export chart data**, which is available on TradingView's paid plans.
 
-1. In TradingView, open the chart, add **Volume** (needed for VWAP), and choose **Export chart data…**.
-2. Save the CSV in your exports folder, keeping the file name TradingView gives it (e.g. `OANDA_EURUSD, 1.csv`). The name tells the skill the symbol.
-3. Export **1-minute** bars for the most accurate checks, and 5-minute bars for longer history.
+### 1. Set up the chart
 
-Overlapping exports are merged, so just keep adding new ones. If the TradingView MCP server is connected, Claude can also fill small gaps from it.
+Open the instrument at the bar size you want to export, then add these from **Indicators**:
+
+| Add | Why | Needed? |
+|---|---|---|
+| **Volume** | VWAP is calculated from it | **Yes**, for VWAP |
+| **VWAP** (built in, anchor: Session) | Used exactly as the chart shows it | Recommended |
+| **Machine Learning: Lorentzian Classification** (by jdehorty), default settings | Its *Kernel Regression Estimate* line is drawn on the gallery charts | Recommended |
+| **SMA 50, 100, 200, 500, 1000** | Match what you see on your own chart | Optional: the skill calculates them from prices |
+| **ATR** (length 14) | Match what you see on your own chart | Optional: the skill calculates ATR on 5m, 15m, 4h and daily itself |
+
+Without VWAP or the Lorentzian script on the chart, the skill calculates both, matching TradingView. VWAP still needs **Volume**.
+
+### 2. Load the history you want
+
+The export contains only the bars loaded on the chart. Scroll left (or zoom out) until the chart reaches as far back as you
+need. The bars are already loaded from TradingView's servers, so this takes only a moment.
+
+### 3. Export
+
+1. Click the arrow next to the chart's layout name at the top right, then **Export chart data…**.
+2. Choose **ISO time** (UNIX time works too), then **Export**.
+3. Save the file into your exports folder, **keeping the name TradingView gives it**, e.g. `OANDA_EURUSD, 1.csv` or
+   `OANDA_EURUSD, 1 (1).csv`. The name tells the skill the symbol; the bar size is read from the data.
+
+### Which bar sizes
+
+- **1-minute** gives the most accurate outcome checks. Export it for the period your trades cover. The skill builds
+  5m, 15m, 30m and 60m bars from it wherever you have no export of those.
+- **5-minute** reaches further back, for longer history, ATR and the charts.
+- **Repeat now and then.** Overlapping exports are merged and the newest file wins, so just add new ones.
+- **Deleting old exports is safe:** bars are kept once read. Run `prices.py ingest --rebuild` to start again from the files present.
+
+### Your data
+
+- `prices.py status` lists what is held for each symbol and bar size.
+- `prices.py export OANDA:EURUSD 1m merged.csv` writes one merged CSV of the stored bars, for opening in Excel.
+- If the TradingView MCP server is connected, Claude can also fill small gaps from it.
 
 ## Use
 

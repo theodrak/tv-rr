@@ -94,12 +94,10 @@ def vwap_series(sym, bars):
     if all("vwap" in b for b in bars): return [b["vwap"] for b in bars]
     out, day, pv, vv = [], None, 0.0, 0.0
     for b in bars:
-        if "vwap" in b: out.append(b["vwap"]); continue
-        if "v" not in b: out.append(None); continue
         d = day_start(sym, b["t"])
         if d != day: day, pv, vv = d, 0.0, 0.0
-        pv += (b["h"] + b["l"] + b["c"]) / 3 * b["v"]; vv += b["v"]
-        out.append(pv / vv if vv else None)
+        if "v" in b: pv += (b["h"] + b["l"] + b["c"]) / 3 * b["v"]; vv += b["v"]
+        out.append(b["vwap"] if "vwap" in b else pv / vv if vv and "v" in b else None)
     return out
 
 
