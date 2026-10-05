@@ -82,6 +82,6 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 Also ask where images and the page should go:
 - `gallery.images_dir`, by default a `Charts` folder beside the workbook;
 - `gallery.notes_dir`, by default beside the workbook;
-- `gallery.link_style`: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
-- `gallery.format`: any of `html`, `pdf`, `markdown` (default `["markdown"]`);
+- `gallery.link_style`, for the Markdown page only: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
+- `gallery.format`: any of `html`, `pdf`, `markdown`. The default is `["html"]`; Obsidian users usually want `["markdown","html"]`;
 - `gallery.timeframe`: chart every trade at one bar size, e.g. `5`. By default each trade is charted at the timeframe it was drawn on.

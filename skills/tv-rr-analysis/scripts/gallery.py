@@ -178,7 +178,7 @@ def main():
         else: print(f"{tag} {t['Symbol']}: skipped (no price data around the entry — add exports and run prices.py ingest)")
     if not made: sys.exit("no trades could be charted")
     note = Path(a.note).expanduser() if a.note else (config.path(g["notes_dir"]) or wbp.parent) / f"{label} - trade gallery.md"
-    fmts = [f.strip() for f in a.format.split(",")] if a.format else (g.get("format") or ["markdown"])
+    fmts = [f.strip() for f in a.format.split(",")] if a.format else (g.get("format") or ["html"])
     if isinstance(fmts, str): fmts = [fmts]
     if "markdown" in fmts: write_note(note, label, wbp, made, g["link_style"]); print(f"page: {note}")
     if "html" in fmts:

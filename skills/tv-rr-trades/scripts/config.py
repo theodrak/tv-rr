@@ -33,7 +33,7 @@ DEFAULTS = {
     "default_session_start": "17:00 America/New_York",
     "symbols": {},
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
-                "timeframe": None, "format": ["markdown"]},
+                "timeframe": None, "format": ["html"]},
 }
 
 
