@@ -66,3 +66,24 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **The workbook must be closed** for the links to be written. `enrich.py` refreshes them after every update.
 - **If a user says the links ask for permission,** check that the gallery was generated on this Mac with the current version, then rerun `gallery.py`.
 
+**Before the first gallery, ask the user which elements to draw** and save the answer with
+`config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
+`config.py elements` lists every choice:
+
+| Element | What it draws |
+|---|---|
+| `vwap` | Session VWAP |
+| `kernel` | The Lorentzian Classification kernel regression line (red falling, teal rising) |
+| `sma50` … `sma1000` | Simple moving averages 50, 100, 200, 500, 1000 |
+| `ema9` | EMA 9 |
+| `prior_day` / `prior_week` | Prior session / prior week high and low |
+| `prior_value` | Prior session value area and POC (needs volume) |
+| `sessions` | The session bar along the top: Asia, EU pre-market / open / afternoon, US pre-market / open / afternoon, each in its market's local time |
+| `round_numbers` | Round-number price lines |
+
+Also ask where images and the page should go:
+- `gallery.images_dir`, by default a `Charts` folder beside the workbook;
+- `gallery.notes_dir`, by default beside the workbook;
+- `gallery.link_style`, for the Markdown page only: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
+- `gallery.format`: any of `html`, `pdf`, `markdown`. The default is `["html"]`; Obsidian users usually want `["markdown","html"]`;
+- `gallery.timeframe`: chart every trade at one bar size, e.g. `5`. By default each trade is charted at the timeframe it was drawn on.
