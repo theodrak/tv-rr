@@ -49,3 +49,7 @@ Overlapping exports are merged, so just keep adding new ones. If the TradingView
 2. Tell Claude "log the trades I copied".
 
 Ask for "the breakdown", "which target would have worked better", or "a gallery of my trades".
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

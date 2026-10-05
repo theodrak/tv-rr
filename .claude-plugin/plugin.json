@@ -2,6 +2,15 @@
   "name": "tv-rr",
   "version": "0.1.0",
   "description": "Log TradingView Long/Short Position tools into an Excel trade log, re-check outcomes on price data, and analyse them: what-if stops and targets, break-even rules, MAE/MFE, ATR, VWAP and chart galleries. Any instrument.",
-  "author": { "name": "Theo Drakakis" },
-  "keywords": ["tradingview", "trading", "journal", "backtest", "excel"]
+  "author": {
+    "name": "Theo Drakakis"
+  },
+  "keywords": [
+    "tradingview",
+    "trading",
+    "journal",
+    "backtest",
+    "excel"
+  ],
+  "license": "MIT"
 }
