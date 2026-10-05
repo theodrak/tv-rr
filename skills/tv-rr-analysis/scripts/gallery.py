@@ -19,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tv-rr-trades" / "s
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config, indicators, prices  # noqa: E402
 from extract import UTC, candle_path, legacy_name  # noqa: E402
-from chart import decimals, draw  # noqa: E402
+import importlib.util  # noqa: E402
+# loaded by path, so another skill's own "chart" module on sys.path can never be picked up instead
+_spec = importlib.util.spec_from_file_location("tvrr_chart", Path(__file__).resolve().parent / "chart.py")
+_chart = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_chart)
+decimals, draw = _chart.decimals, _chart.draw
 
 BEFORE, AFTER = 144, 24  # chart bars before the entry candle and after the exit
 _series = {}
