@@ -139,7 +139,40 @@ def enrich(path):
     for c in NEW_COLS: ws.column_dimensions[get_column_letter(col[c])].width = 10
     breakdown(wb, records)
     wb.save(path)
+    try: add_chart_links(path)
+    except PermissionError: pass
     return records
+
+
+def add_chart_links(path, page=None):
+    """Fill the Chart column: for each trade, a link (relative to the workbook) to its section of the HTML gallery.
+    Without `page`, look for the gallery beside the workbook or in gallery.notes_dir. Returns how many were linked."""
+    import os, re
+    from openpyxl import load_workbook
+    from openpyxl.styles import Font
+    path = Path(path)
+    lock = path.with_name("~$" + path.name)
+    if lock.exists(): raise PermissionError(path)
+    if page is None:
+        dirs = [config.path(config.load()["gallery"].get("notes_dir")), path.parent]
+        found = [p for d in dirs if d and d.exists() for p in d.glob("*- trade gallery.html")]
+        if not found: return 0
+        page = max(found, key=lambda p: p.stat().st_mtime)
+    page = Path(page); tdir = page.with_name(page.stem + "_files") / "trades"
+    wb = load_workbook(path); ws = wb["Trades"]; head = [c.value for c in ws[1]]
+    if "Chart" not in head:
+        ws.cell(1, len(head) + 1, "Chart").font = Font(bold=True); head.append("Chart")
+    col = {h: i + 1 for i, h in enumerate(head)}; n = 0
+    for i in range(2, ws.max_row + 1):
+        sym, did = ws.cell(i, col["Symbol"]).value, ws.cell(i, col["Drawing id"]).value
+        cell = ws.cell(i, col["Chart"]); cell.value = None; cell.hyperlink = None
+        if not sym or not did: continue
+        target = tdir / ("t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{sym}-{did}") + ".html")
+        if not target.exists(): continue
+        cell.value = "Open chart"; cell.hyperlink = os.path.relpath(target, path.parent).replace(os.sep, "/")
+        cell.font = Font(color="0563C1", underline="single"); n += 1
+    wb.save(path)
+    return n
 
 
 def breakdown(wb, records):

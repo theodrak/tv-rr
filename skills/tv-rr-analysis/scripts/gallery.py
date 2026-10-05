@@ -1,14 +1,16 @@
 """Chart every trade in the log twice — as it stood at the entry, and its follow-through — with the risk/reward tool drawn
 on, plus a Markdown page showing them all.
 
-usage: gallery.py [--file WORKBOOK] [--note NOTE.md] [--title TITLE] [--only YYYY-MM-DD …] [--symbol SYMBOL]
+usage: gallery.py [--file WORKBOOK] [--note NOTE.md] [--title TITLE] [--only YYYY-MM-DD …] [--symbol SYMBOL] [--format pdf,html,markdown]
 
 Charts use gallery.timeframe (e.g. 5) when set, otherwise the trade's own timeframe when its bars are stored (else 5m,
 else the nearest held). "At entry" shows only
 what was visible at the fill: with 1m data the entry candle is rebuilt up to the fill minute; without it, the entry
 candle is drawn from its open to the entry price. Which overlays appear is config gallery.elements. Images go to
 gallery.images_dir (default: a "Charts" folder beside the workbook); the page to gallery.notes_dir (default: beside the
-workbook), linked Obsidian-style or as plain Markdown (gallery.link_style).
+workbook), linked Obsidian-style or as plain Markdown (gallery.link_style). gallery.format (or --format) picks the
+outputs: "markdown" (the page), "html" (one page that opens in any browser) and/or "pdf" (a summary page, then one
+page per trade), all beside each other with the same name.
 """
 import argparse, datetime as dt, statistics, sys
 from pathlib import Path
@@ -158,7 +160,7 @@ def link(p, note_dir, style):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--file"); ap.add_argument("--note"); ap.add_argument("--title"); ap.add_argument("--only", nargs="*"); ap.add_argument("--symbol")
+    ap.add_argument("--file"); ap.add_argument("--note"); ap.add_argument("--title"); ap.add_argument("--only", nargs="*"); ap.add_argument("--symbol"); ap.add_argument("--format")
     a = ap.parse_args(); wbp = config.workbook(a.file); label = a.title or wbp.stem
     g = config.load()["gallery"]; elements = g["elements"]
     images = config.path(g["images_dir"]) or wbp.parent / "Charts"
@@ -176,8 +178,120 @@ def main():
         else: print(f"{tag} {t['Symbol']}: skipped (no price data around the entry — add exports and run prices.py ingest)")
     if not made: sys.exit("no trades could be charted")
     note = Path(a.note).expanduser() if a.note else (config.path(g["notes_dir"]) or wbp.parent) / f"{label} - trade gallery.md"
-    write_note(note, label, wbp, made, g["link_style"])
-    print(f"note: {note}")
+    fmts = [f.strip() for f in a.format.split(",")] if a.format else (g.get("format") or ["markdown"])
+    if isinstance(fmts, str): fmts = [fmts]
+    if "markdown" in fmts: write_note(note, label, wbp, made, g["link_style"]); print(f"page: {note}")
+    if "html" in fmts:
+        p = write_html(note.with_suffix(".html"), label, wbp, made); print(f"html: {p}")
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent)); from enrich import add_chart_links
+            n = add_chart_links(wbp, p); print(f"workbook: {n} trades linked to the gallery (Chart column)")
+        except PermissionError:
+            print("workbook is open in Excel — close it and run gallery.py again to add the Chart links")
+    if "pdf" in fmts: p = write_pdf(note.with_suffix(".pdf"), label, wbp, made); print(f"pdf: {p}")
+
+
+def summary(made):
+    """[(group, trades, won, win %, avg MAE, avg MFE)] for All, Long, Short and each symbol when there are several."""
+    avg = lambda xs: f"{statistics.mean(xs):.1f}" if xs else "–"
+    ex = lambda ts, k: [t[k] for t in ts if t.get(k) is not None]
+    syms = sorted({t["Symbol"] for t, _ in made}); out = []
+    for grp in ("All", "Long", "Short") + (tuple(syms) if len(syms) > 1 else ()):
+        s = [t for t, _ in made if grp == "All" or grp in (t["Direction"], t["Symbol"])]
+        if not s: continue
+        w = sum(t["Outcome"] == "TP" for t in s); r = sum(t.get("Result R") or 0 for t in s)
+        out.append((grp, len(s), w, f"{100 * w / len(s):.0f}%", f"{r:+.1f}R", avg(ex(s, "MAE pts")), avg(ex(s, "MFE pts"))))
+    return out
+
+
+def trade_line(t):
+    return (f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
+            + (f" · MAE {t['MAE pts']:.1f}" if t.get("MAE pts") is not None else "")
+            + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""))
+
+
+def heading(t):
+    d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
+    return f"{d:%a} {d.day} {d:%b %Y} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}"
+
+
+def write_pdf(path, label, wbp, made):
+    """A4 portrait: a summary page, then one page per trade with its at-entry and follow-through charts."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
+    with PdfPages(path) as pdf:
+        fig = plt.figure(figsize=(8.27, 11.69)); fig.text(0.07, 0.93, f"{label} — trade gallery", fontsize=20, weight="bold")
+        fig.text(0.07, 0.905, f"{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {config.tz_name()} · from {wbp.name}",
+                 fontsize=10, color="#555555")
+        rows = summary(made); hdr = ("", "Trades", "Won", "Win %", "Net R", "Avg MAE", "Avg MFE")
+        tb = fig.add_axes([0.07, 0.86 - 0.03 * (len(rows) + 1), 0.86, 0.03 * (len(rows) + 1)]); tb.axis("off")
+        t_ = tb.table(cellText=[list(map(str, r)) for r in rows], colLabels=hdr, loc="upper left", cellLoc="center")
+        t_.auto_set_font_size(False); t_.set_fontsize(10); t_.scale(1, 1.4)
+        y = 0.80 - 0.03 * len(rows)
+        fig.text(0.07, y, "Each trade has two charts: at entry (only what was visible at the fill) and the follow-through, both with\n"
+                 "the risk/reward tool: the entry line, the green TP zone and the red stop zone.", fontsize=9.5, color="#333333", va="top")
+        y -= 0.06
+        for t, _ in made:
+            if y < 0.05: pdf.savefig(fig); plt.close(fig); fig = plt.figure(figsize=(8.27, 11.69)); y = 0.95
+            fig.text(0.07, y, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=8.5, color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
+            y -= 0.017
+        pdf.savefig(fig); plt.close(fig)
+        for t, (p1, p2) in made:
+            fig = plt.figure(figsize=(8.27, 11.69))
+            fig.text(0.05, 0.965, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=13, weight="bold",
+                     color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
+            fig.text(0.05, 0.945, trade_line(t), fontsize=9.5, color="#555555")
+            img = [plt.imread(p) for p in (p1, p2)]
+            h = 0.96 * 8.27 * img[0].shape[0] / img[0].shape[1] / 11.69  # page fraction one full-width chart needs
+            for k, im in enumerate(img):
+                ax = fig.add_axes([0.02, 0.925 - (k + 1) * h - k * 0.02, 0.96, h]); ax.imshow(im, interpolation="lanczos"); ax.axis("off")
+            pdf.savefig(fig, dpi=200); plt.close(fig)
+    return path
+
+
+def anchor(t):
+    """A stable id for a trade's section: its symbol and TradingView drawing id (the workbook's key for the trade)."""
+    import re
+    key = t.get("Drawing id") or t["Entry time"].strftime("%Y%m%d%H%M")
+    return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
+
+
+def trade_links_dir(page):
+    return page.with_name(page.stem + "_files") / "trades"
+
+
+def write_html(path, label, wbp, made):
+    """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
+    Each trade's section has an id (anchor()), and a one-line page per trade in <page>_files/trades/ jumps to it: Excel
+    drops the #anchor from links to local files, so the workbook's Chart column links to those pages instead."""
+    import html as h, os
+    first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
+    rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
+    rows = "".join("<tr>" + "".join(f"<td>{h.escape(str(c))}</td>" for c in r) + "</tr>" for r in summary(made))
+    body = "".join(
+        f'<section id="{anchor(t)}"><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
+        f'<a href="{rel(p1)}"><img src="{rel(p1)}" loading="lazy" alt="at entry"></a>'
+        f'<a href="{rel(p2)}"><img src="{rel(p2)}" loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in made)
+    path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{h.escape(label)} — trade gallery</title><style>
+body{{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:1200px;margin:24px auto;padding:0 16px;color:#222;background:#fff}}
+h1{{margin:0 0 4px}} .sub{{color:#666}} table{{border-collapse:collapse;margin:16px 0}} td,th{{border:1px solid #ddd;padding:4px 12px;text-align:center}}
+section{{border-top:1px solid #eee;padding:16px 0}} h2{{font-size:17px;margin:0}} .tp{{color:#2e7d32}} .sl{{color:#c62828}}
+img{{width:100%;margin:6px 0;border:1px solid #eee}}</style></head><body>
+<h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
+<table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
+<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Click a chart to open it full size.</p>
+{body}</body></html>""")
+    d = trade_links_dir(path); d.mkdir(parents=True, exist_ok=True)
+    for old in d.glob("*.html"): old.unlink()
+    for t, _ in made:
+        to = f"../../{path.name}#{anchor(t)}".replace(" ", "%20")
+        (d / f"{anchor(t)}.html").write_text(f'<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url={to}">'
+                                            f'<script>location.replace("{to}")</script><a href="{to}">Open the trade in the gallery</a>')
+    return path
 
 
 def write_note(note, label, wbp, made, style):

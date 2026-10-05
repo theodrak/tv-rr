@@ -47,14 +47,22 @@ uv run -q --with openpyxl python scripts/enrich.py [--file WORKBOOK]
 ## Trade gallery
 
 ```
-uv run -q --with openpyxl --with matplotlib python scripts/gallery.py [--file WORKBOOK] [--only YYYY-MM-DD …] [--symbol SYMBOL]
+uv run -q --with openpyxl --with matplotlib python scripts/gallery.py [--file WORKBOOK] [--only YYYY-MM-DD …] [--symbol SYMBOL] [--format html,pdf,markdown]
 ```
 
 Two charts per closed trade, both with the risk/reward tool drawn on:
 - **at entry:** only what was visible at the fill. With 1m data, the entry candle is rebuilt up to the fill minute;
 - **follow-through:** to the exit, plus a little after.
 
-It also writes a Markdown page with a summary table and every trade.
+It also writes the gallery in the formats set by `gallery.format` (or `--format`):
+- **`html`:** one page that opens in any browser, with charts that open full size when clicked. Recommend it to anyone who doesn't use Obsidian.
+- **`pdf`:** a summary page, then one A4 page per trade. Use it for sharing and printing.
+- **`markdown`:** a page for Obsidian, VS Code or GitHub.
+
+**Chart links in the workbook.** With `html`, every trade gets a **Chart** column in the workbook: "Open chart" jumps straight to that trade in the gallery.
+- **Each trade's section is anchored** on its symbol and TradingView drawing id. A small page per trade in `<gallery>_files/trades/` redirects to it, because Excel drops `#anchors` from links to local files.
+- **Links are relative to the workbook.** Moving the workbook and gallery together, for example by zipping the folder, keeps them working.
+- **The workbook must be closed** for the links to be written. `enrich.py` refreshes them after every update.
 
 **Before the first gallery, ask the user which elements to draw** and save the answer with
 `config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
@@ -75,4 +83,5 @@ Also ask where images and the page should go:
 - `gallery.images_dir`, by default a `Charts` folder beside the workbook;
 - `gallery.notes_dir`, by default beside the workbook;
 - `gallery.link_style`: `obsidian` (`![[…]]`, the default) or `markdown` (`![](…)`);
+- `gallery.format`: any of `html`, `pdf`, `markdown` (default `["markdown"]`);
 - `gallery.timeframe`: chart every trade at one bar size, e.g. `5`. By default each trade is charted at the timeframe it was drawn on.
