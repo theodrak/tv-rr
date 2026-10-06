@@ -83,17 +83,35 @@ Outcomes, MAE/MFE, ATR, VWAP and charts need price bars for each instrument you 
 
 ### 1. Set up the chart
 
+> [!IMPORTANT]
+> **Set the chart up before you export.** The export contains only what is on the chart when you export it: the
+> prices, plus a column for each indicator on the chart. An indicator you add later is not in the files you already
+> saved.
+
 Open the instrument at the bar size you want to export, then add these from **Indicators**:
 
 | Add | Why | Needed? |
 |---|---|---|
 | **Volume** | VWAP is calculated from it | **Yes**, for VWAP |
 | **VWAP** (built in, anchor: Session) | Used exactly as the chart shows it | Recommended |
-| **Machine Learning: Lorentzian Classification** (by jdehorty), default settings | Its *Kernel Regression Estimate* line is drawn on the gallery charts | Recommended |
 | **SMA 50, 100, 200, 500, 1000** | Match what you see on your own chart | Optional: the skill calculates them from prices |
+| **EMA** (e.g. 9, 21, 50) | Match what you see on your own chart | Optional: the skill calculates any EMA length from prices |
 | **ATR** (length 14) | Match what you see on your own chart | Optional: the skill calculates ATR on 5m, 15m, 4h and daily itself |
 
-Without VWAP or the Lorentzian script on the chart, the skill calculates both, matching TradingView. VWAP still needs **Volume**.
+Without VWAP on the chart, the skill calculates it from Volume, matching TradingView.
+
+**Indicators your strategy uses.** If your entries depend on an indicator, add it to the chart before exporting so its
+values are in the file. Some examples:
+- **RSI** (e.g. length 14), for overbought / oversold or divergence entries;
+- **MACD**, for momentum or crossover entries;
+- **Stochastic**, for pullback timing;
+- **Bollinger Bands** or **Keltner Channels**, for range or squeeze setups;
+- **Supertrend** or **Ichimoku**, for trend filters;
+- **Anchored VWAP** or **Volume Profile** levels, for confluence.
+
+The skill reads Volume, VWAP and the price bars from each export today. Other indicator columns stay in your export
+files, where Claude can read them when you ask a question about them (for example "how did my trades do when RSI was
+above 70?"), so keep those files.
 
 ### 2. Load the history you want
 
