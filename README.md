@@ -128,6 +128,27 @@ need. The bars are already loaded from TradingView's servers, so this takes only
 
 Ask for "the breakdown", "which target would have worked better", or "a gallery of my trades".
 
+### Optional: a trading journal in the log
+
+Ask Claude to "add journal columns" to a workbook. Each trade then gets these columns:
+- **Decision:** blank if you took it, **Filtered** if a rule said no, or **Missed**.
+- **Filter 1–3:** up to three filter reasons.
+- **Confluence 1–3:** up to three confluences.
+- **Grade:** a grade with up to three + / − reasons.
+- **Notes:** free text for the filters, the grade and the trade in general.
+
+You choose your own filter reasons, grade reasons and confluences on the workbook's **Lists** sheet. Another workbook
+can copy them from one you already use.
+
+The **Auto confluence** sheet sets which levels are filled in for you and how close to the entry counts, in points or
+pips:
+- VWAP
+- any SMA or EMA
+- the previous day's high and low
+
+The **Breakdown** then compares all trades with the unfiltered ones (taken and missed), so you can see what your filters
+keep you out of.
+
 ## Licence
 
 MIT — see [LICENSE](LICENSE).

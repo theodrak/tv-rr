@@ -17,7 +17,12 @@ Per trade, on the Trades sheet:
   ATR 1:1 … 1.5:1.5 same entry, stop and TP sized from the 5m ATR at entry (stop multiple : TP multiple) → Win / Loss
   VWAP …            the chart's session VWAP at the entry (last closed 5m bar): its value, the entry's distance from it
                     (+ = beyond it your way), which side price closed on, whether it sits between the entry and the TP
-                    (in the way) or between the stop and the entry (behind), and its slope over the last 30 minutes
+                    (in the way) or between the stop and the entry (behind), and whether it is higher or lower than
+                    30 minutes earlier (VWAP 30m change — not a slope: it often reaches back before the open's spike)
+  VWAP direction    the line's slope at entry, from the last 10 minutes (two closed 5m bars): Flat when it moved less
+                    than FLAT_PTS; "Upwards turning" / "Downwards turning" when it still moves that way but at less
+                    than half the pace of the 10 minutes before (flattening out); otherwise Upwards / Downwards
+  VWAP immediate slope   that 10-minute slope against the trade: With / Against / Flat
 "Open" = neither level reached in the price data yet. Blank = not filled, no price data, or levels unknown.
 Breakdown sheet: per variant (Planned, 1/2 stop, 0.5R … 2.5R targets, break-even and ATR versions) and per direction (All / Long / Short) — trades, wins,
 losses, open, win %, net points, net R, and MAE for winners and losers.
@@ -29,7 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tv-rr-trades" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config, indicators  # noqa: E402
+import config, indicators, journal  # noqa: E402
 from extract import UTC, bars_for, candle_path, legacy_name  # noqa: E402
 
 TARGETS = [0.5, 0.75, 1, 1.5, 2, 2.5]
@@ -37,7 +42,11 @@ BE_AT = 0.55
 ATR_COLS = ["ATR 5m", "ATR 15m", "ATR 4h", "ATR D"]
 ATR_RR = [(1, 1), (1, 1.5), (1, 2), (1.5, 1.5)]
 ATR_RR_COLS = [f"ATR {a:g}:{b:g}" for a, b in ATR_RR]
-VWAP_COLS = ["VWAP", "VWAP dist", "VWAP side", "VWAP in the way", "VWAP behind", "VWAP slope"]
+VWAP_COLS = ["VWAP", "VWAP dist", "VWAP side", "VWAP in the way", "VWAP behind", "VWAP 30m change", "VWAP direction",
+             "VWAP immediate slope"]
+RENAMED = {"VWAP slope": "VWAP 30m change"}  # its 30-minute comparison was never the line's slope at entry
+FLAT_PTS = 2       # VWAP moving less than this over the last 10 minutes counts as flat
+TURNING = 0.5      # still moving the same way, but at less than this share of the previous 10 minutes' pace
 TARGET_COLS = [f"TP {t:g}R" for t in TARGETS]
 NEW_COLS = ["1/2 stop"] + TARGET_COLS + ["MAE pts", "MFE pts", "BE at 55%", "1.5R BE at 55%", "1.5R BE at 1R"] + ATR_COLS + ATR_RR_COLS + VWAP_COLS
 # Earlier versions named the targets in points; their columns are removed so the sheet doesn't carry both
@@ -77,12 +86,23 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
     return ("Open" if filled else None), (mae if filled else None), False, (mfe if filled else None)
 
 
+def vwap_direction(recent, sign):
+    """(direction, immediate slope) from [VWAP now, 10 min ago, 20 min ago] and the trade's sign (+1 long, -1 short)."""
+    if not recent or recent[0] is None or recent[1] is None: return None, None
+    now = recent[0] - recent[1]
+    before = recent[1] - recent[2] if recent[2] is not None else None
+    if abs(now) < FLAT_PTS: return "Flat", "Flat"
+    word = "Upwards" if now > 0 else "Downwards"
+    if before is not None and before * now > 0 and abs(now) < TURNING * abs(before): word += " turning"
+    return word, "With" if now * sign > 0 else "Against"
+
+
 def enrich(path):
     from openpyxl import load_workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     wb = load_workbook(path); ws = wb["Trades"]
-    for c in ws[1]: c.value = legacy_name(c.value)
+    for c in ws[1]: c.value = RENAMED.get(legacy_name(c.value), legacy_name(c.value))
     for i in sorted((n for n, c in enumerate(ws[1], 1) if c.value in OBSOLETE), reverse=True): ws.delete_cols(i)
     head = [c.value for c in ws[1]]
     for c in NEW_COLS:
@@ -92,7 +112,7 @@ def enrich(path):
     col = {h: i + 1 for i, h in enumerate(head)}
     fill = {"Win": PatternFill("solid", fgColor="C8E6C9"), "Loss": PatternFill("solid", fgColor="FFCDD2"),
             "Open": PatternFill("solid", fgColor="BBDEFB"), "BE": PatternFill("solid", fgColor="FFE0B2")}
-    records = []
+    records, auto_cache = [], {}
     for i in range(2, ws.max_row + 1):
         v = {h: ws.cell(i, col[h]).value for h in head}
         out = {c: None for c in NEW_COLS}
@@ -108,7 +128,8 @@ def enrich(path):
                 out["VWAP side"] = "With" if (vw[2] - vw[0]) * s_ > 0 else "Against"
                 out["VWAP in the way"] = "Yes" if 0 < -dist < abs(v["TP planned"] - e_) else "No"
                 out["VWAP behind"] = "Yes" if 0 < dist < abs(e_ - v["Stop"]) else "No"
-                out["VWAP slope"] = None if vw[1] is None else "With" if (vw[0] - vw[1]) * s_ > 0 else "Against"
+                out["VWAP 30m change"] = None if vw[1] is None else "With" if (vw[0] - vw[1]) * s_ > 0 else "Against"
+                out["VWAP direction"], out["VWAP immediate slope"] = vwap_direction(indicators.vwap_recent(v["Symbol"], t0), s_)
         ok = bars and None not in (v.get("Entry"), v.get("Stop"), v.get("TP planned"), t0)
         if ok and v.get("Outcome") != "Not filled":
             long_ = v["Direction"] == "Long"; s = 1 if long_ else -1
@@ -131,12 +152,29 @@ def enrich(path):
             cell.fill = fill.get(out[c], PatternFill()); cell.alignment = Alignment(horizontal="center")
             if c in ATR_COLS or c in ("VWAP", "VWAP dist", "MAE pts", "MFE pts"): cell.number_format = "0." + "0" * max(1, nd) if c != "VWAP" else "0." + "0" * (nd + 1)
             good, bad = PatternFill("solid", fgColor="E8F5E9"), PatternFill("solid", fgColor="FFEBEE")
-            if c in ("VWAP side", "VWAP slope"): cell.fill = {"With": good, "Against": bad}.get(out[c], PatternFill())
+            if c in ("VWAP side", "VWAP 30m change", "VWAP immediate slope"): cell.fill = {"With": good, "Against": bad}.get(out[c], PatternFill())
             if c == "VWAP in the way": cell.fill = {"Yes": bad}.get(out[c], PatternFill())
             if c == "VWAP behind": cell.fill = {"Yes": good}.get(out[c], PatternFill())
             if c == "VWAP dist" and out[c] is not None and out[c] < 0: cell.fill = bad
+        if "Auto confluence" in col and v.get("Symbol") not in auto_cache: auto_cache[v.get("Symbol")] = journal.auto_settings(wb, v.get("Symbol"))
+        auto = auto_cache.get(v.get("Symbol")) if "Auto confluence" in col else None
+        if auto and t0 and v.get("Symbol"):
+            dist, unit, size, wanted = auto
+            levels = {}
+            for kind, n, name in wanted:
+                if kind == "vwap": levels[name] = vw[0] if vw else None
+                elif kind == "SMA": levels[name] = indicators.sma_at(v["Symbol"], t0, n)
+                elif kind == "EMA": levels[name] = indicators.ema_at(v["Symbol"], t0, n)
+                elif kind in ("previous day high", "previous day low"):
+                    hl = indicators.prior_day_hl(v["Symbol"], t0)
+                    levels[name] = (hl[0] if kind.endswith("high") else hl[1]) if hl else None
+            text, slots = journal.auto_confluence(v, levels, dist, unit, size)
+            ws.cell(i, col["Auto confluence"], text)
+            for c, x in zip(journal.CONFS, slots): ws.cell(i, col[c], x); v[c] = x
+            v["Auto confluence"] = text
         records.append((v, out))
     for c in NEW_COLS: ws.column_dimensions[get_column_letter(col[c])].width = 10
+    ws.auto_filter.ref = ws.dimensions  # extract.py set it before these columns existed
     breakdown(wb, records)
     wb.save(path)
     try: add_chart_links(path)
@@ -217,7 +255,25 @@ def breakdown(wb, records):
     ws.append([f"Win/loss by variant — {len(records)} trades in the log, re-checked on the stored prices "
                f"(Planned uses your confirmed outcome where you set one)"])
     ws["A1"].font = Font(bold=True, size=13)
+    sections = [(None, records)]
+    if any("Decision" in v for v, _ in records):  # journal columns: also the trades that passed the filters
+        unf = [(v, o) for v, o in records if v.get("Decision") != "Filtered"]
+        sections = [(f"All trades ({len(records)}: taken, missed and filtered)", records),
+                    (f"Unfiltered trades ({len(unf)}: taken and missed; Decision is not Filtered)", unf)]
+    for title, recs in sections:
+        variant_table(ws, title, recs, variants, groups)
     ws.append([])
+    ws.append(["Win = TP reached before the stop; Loss = stop first; Open = neither yet; Break-even = the stop had been moved to the entry and price came back to it (0 pts; counted in the win % as not a win). Net R uses each variant's own risk "
+               "(half the stop for 1/2 stop). Net pts adds price moves, so compare R when the log mixes instruments. MAE / MFE are the planned trade's worst move against and best move for the entry, averaged over the trades this variant won or lost; trades whose exit candle reached both levels have neither."])
+    for col, w in zip("ABCDEFGHIJKLMN", (32, 14, 8, 8, 8, 8, 10, 8, 10, 8, 14, 14, 14, 14)): ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+
+
+def variant_table(ws, title, records, variants, groups):
+    from openpyxl.styles import Font, PatternFill, Alignment
+    ws.append([])
+    if title:
+        ws.append([title]); ws.cell(ws.max_row, 1).font = Font(bold=True, size=12)
     hdr = ["Variant", "Group", "Trades", "Wins", "Losses", "Open", "Break-even", "Win %", "Net pts", "Net R", "Avg MAE winners", "Avg MAE losers", "Avg MFE winners", "Avg MFE losers"]
     ws.append(hdr)
     for c in ws[ws.max_row]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
@@ -242,11 +298,6 @@ def breakdown(wb, records):
             if side == "All":
                 for c in ws[r_]: c.font = Font(bold=True)
                 for c in ws[r_]: c.fill = PatternFill("solid", fgColor="F5F5F5")
-    ws.append([])
-    ws.append(["Win = TP reached before the stop; Loss = stop first; Open = neither yet; Break-even = the stop had been moved to the entry and price came back to it (0 pts; counted in the win % as not a win). Net R uses each variant's own risk "
-               "(half the stop for 1/2 stop). Net pts adds price moves, so compare R when the log mixes instruments. MAE / MFE are the planned trade's worst move against and best move for the entry, averaged over the trades this variant won or lost; trades whose exit candle reached both levels have neither."])
-    for col, w in zip("ABCDEFGHIJKLMN", (32, 14, 8, 8, 8, 8, 10, 8, 10, 8, 14, 14, 14, 14)): ws.column_dimensions[col].width = w
-    ws.freeze_panes = "A4"
 
 
 if __name__ == "__main__":

@@ -15,14 +15,14 @@ import argparse, datetime as dt, html, json, math, platform, re, subprocess, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config, prices  # noqa: E402
+import config, journal, prices  # noqa: E402
 from prices import bars_for  # noqa: E402,F401  (re-exported for the analysis skill)
 
 TZ, UTC = config.tz(), dt.timezone.utc
 ANALYSIS = Path(__file__).resolve().parents[2] / "tv-rr-analysis" / "scripts"
 RR_TYPES = {"LineToolRiskRewardLong": "Long", "LineToolRiskRewardShort": "Short"}
-COLS = ["Symbol", "Timeframe", "Direction", "Entry time", "Entry", "Stop", "TP planned", "Risk pts", "Reward pts",
-        "Planned R:R", "Status", "Fill time", "Exit time", "Exit price", "Outcome", "Result pts", "Result R",
+COLS = ["Symbol", "Direction", "Entry time", "Chart", "Outcome", "Timeframe", "Entry", "Stop", "TP planned", "Risk pts",
+        "Reward pts", "Planned R:R", "Status", "Fill time", "Exit time", "Exit price", "Result pts", "Result R",
         "Check", "Confirmed outcome", "Note",
         "TradingView says", "TradingView exit", "Checked on", "Checked to", "Drawing id", "Entry (UTC)", "Last copied"]
 # Local-time columns, shown in the configured timezone. Older workbooks named them "Entry time (Sydney)" etc.
@@ -259,7 +259,7 @@ def load(path):
     if not path.exists(): return []
     ws = load_workbook(path)["Trades"]; rows = list(ws.iter_rows(values_only=True))
     head = [legacy_name(h) for h in rows[0]]
-    out = [dict(zip(head, r)) for r in rows[1:] if any(v is not None for v in r)]
+    out = [d for d in (dict(zip(head, r)) for r in rows[1:]) if d.get("Symbol")]  # a row is a trade only with a symbol
     # times copied from TradingView are stored as local times: move them if the timezone setting has changed
     note = ws.cell(1, head.index("Entry time") + 1).comment if "Entry time" in head else None
     m = re.search(r"shown in (\S+)\.", note.text) if note else None
@@ -278,14 +278,21 @@ def legacy_name(h):
     return m.group(1) if m and m.group(1) in TIME_COLS else h
 
 
+def columns(with_journal):
+    """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py)."""
+    return list(COLS) + (journal.COLS if with_journal else [])
+
+
 def save(path, rows):
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
+    lists = journal.read_lists(path) if journal.enabled(path) else None
+    COLS = columns(lists is not None)
     wb = Workbook(); ws = wb.active; ws.title = "Trades"
     ws.append(COLS)
     for c in ws[1]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
-    ws.freeze_panes = "A2"
+    ws.freeze_panes = "F2"  # header row and Symbol, Direction, Entry time, Chart, Outcome stay in view
     from openpyxl.comments import Comment
     ws.cell(1, COLS.index("Entry time") + 1).comment = Comment(f"Local times are shown in {config.tz_name()}.", "tv-rr")
     from openpyxl.worksheet.datavalidation import DataValidation
@@ -295,6 +302,7 @@ def save(path, rows):
     fills = {"TP": "C8E6C9", "Stop": "FFCDD2", "Not closed": "E0E0E0", "Not filled": "E0E0E0", "Open": "BBDEFB",
              "Closed (other)": "FFF9C4", "Both in one candle": "FFF9C4"}
     for r in rows:
+        r["Chart"] = None  # links to the gallery, re-made by tv-rr-analysis after every save
         ws.append([r.get(c) for c in COLS])
         i = ws.max_row
         for c in TIME_COLS + ("Entry (UTC)", "Last copied"):
@@ -310,8 +318,10 @@ def save(path, rows):
         elif r.get("Check"): ck.font = Font(color="2E7D32")
     widths = {"Symbol": 16, "Timeframe": 10, "Direction": 10, **{c: 22 for c in TIME_COLS}, "Entry (UTC)": 22, "Last copied": 22,
               "Outcome": 16, "Status": 16, "TradingView says": 14,
-              "Note": 60, "Drawing id": 12, "Check": 44, "Confirmed outcome": 16}
+              "Note": 60, "Drawing id": 12, "Chart": 11, "Check": 44, "Confirmed outcome": 16}
     for i, c in enumerate(COLS, 1): ws.column_dimensions[get_column_letter(i)].width = widths.get(c, 12)
+    if lists is not None:
+        journal.style(ws, COLS, len(rows)); journal.write_lists(wb, lists)
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 
@@ -353,6 +363,7 @@ if __name__ == "__main__":
         if prev:
             same = all(prev.get(c) == r.get(c) for c in ("Entry", "Stop", "TP planned"))
             for c in USER_COLS: r[c] = prev.get(c) if same else None
+            for c in journal.KEEP: r[c] = prev.get(c)  # your notes stay even when the levels move
             if not same and prev.get("Confirmed outcome"): r["Note"] = "levels changed since you confirmed it — confirm again"
         old[key(r)] = r
     rows = sorted(old.values(), key=lambda r: r["Entry (UTC)"])
@@ -361,7 +372,7 @@ if __name__ == "__main__":
         if r["TradingView exit"] is None and r["TradingView says"] not in (None, "Not closed"):
             r["TradingView exit"] = r.get("Exit time")  # rows written before this column existed
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
-        check_with_prices(r); apply_confirmation(r)
+        check_with_prices(r); apply_confirmation(r); journal.autofill_decision(r)
     print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
           + (" — dry run, nothing written" if a.dry_run else ""))
     print("updated from the clipboard:")
