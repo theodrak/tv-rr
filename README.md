@@ -182,6 +182,8 @@ More things you can ask, with drawings copied from TradingView:
 - **"Add these filtered trades"** or **"Add these missed trades"**: logs them with **Decision** set, adding new ones and
   updating ones already in the sheet. "Update these trades to filtered" works the same way. Needs the journal
   columns (below).
+- **"Mark these as taken"**: sets them back to Taken. A trade can be Taken even with filter reasons, when something
+  else outweighed them; say why in Filter notes.
 - **"Remove these trades"**: Claude lists what would be removed and asks before deleting.
 
 Each trade also has a **TV chart** column for your own TradingView chart link. Paste a URL, or a link with your own
@@ -190,7 +192,7 @@ text. It's kept whenever the sheet is rebuilt.
 ### Optional: a trading journal in the log
 
 Ask Claude to "add journal columns" to a workbook. Each trade then gets these columns:
-- **Decision:** blank if you took it, **Filtered** if a rule said no, or **Missed**.
+- **Decision:** **Taken** (the default for every trade added), **Filtered** if a rule said no, or **Missed**.
 - **Filter 1–3:** up to three filter reasons.
 - **Confluence 1–3:** up to three confluences.
 - **Grade:** a grade with up to three + / − reasons.

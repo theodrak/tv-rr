@@ -4,8 +4,8 @@ usage: extract.py [--file CLIP.html] [--tick 0.1] [--out PATH] [--dry-run] [--re
                   [--decision Filtered|Missed|Taken] [--remove]
 
 --decision sets the journal's Decision on every drawing on the clipboard: drawings not in the sheet are added, ones
-already there are updated ("add these filtered trades", "update these trades to missed"). Taken clears it (blank =
-taken). The workbook needs journal columns (journal.py init).
+already there are updated ("add these filtered trades", "update these trades to missed", "mark these as taken").
+Without it, new trades are Taken. The workbook needs journal columns (journal.py init).
 --remove deletes the clipboard's drawings from the sheet ("remove these trades"); with --dry-run it only lists them.
 
 TradingView copies drawings as HTML: one <span data-tradingview-clip="…"> whose JSON holds a `sources` list, one per
@@ -360,7 +360,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--file"); ap.add_argument("--tick", type=float)
     ap.add_argument("--out"); ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--recheck", action="store_true", help="re-assess the trades already in the workbook; no clipboard")
-    ap.add_argument("--decision", choices=["Filtered", "Missed", "Taken"], help="set Decision on the copied drawings (Taken clears it)")
+    ap.add_argument("--decision", choices=["Filtered", "Missed", "Taken"], help="set Decision on the copied drawings")
     ap.add_argument("--remove", action="store_true", help="delete the copied drawings from the sheet")
     a = ap.parse_args()
     path = config.workbook(a.out)
@@ -380,6 +380,7 @@ if __name__ == "__main__":
         if lt and not config.symbol(r["Symbol"])["tick"]: learned[r["Symbol"]] = lt
         if w: warns.append(w)
     old = {key(r): r for r in load(path)}
+    has_journal = journal.enabled(path)
     if a.remove:
         gone = [old.pop(key(r)) for r in new if key(r) in old]; missing = [r for r in new if key(r) not in {key(g) for g in gone}]
         print(f"{len(found)} drawings on the clipboard: {len(gone)} in {path.name}"
@@ -401,7 +402,7 @@ if __name__ == "__main__":
             for c in USER_COLS: r[c] = prev.get(c) if same else None
             for c in journal.KEEP + list(KEEP_COLS): r[c] = prev.get(c)  # your notes and links stay even when the levels move
             if not same and prev.get("Confirmed outcome"): r["Note"] = "levels changed since you confirmed it — confirm again"
-        if a.decision: r["Decision"] = None if a.decision == "Taken" else a.decision
+        if a.decision: r["Decision"] = a.decision
         old[key(r)] = r
     rows = sorted(old.values(), key=lambda r: r["Entry (UTC)"])
     for r in rows:
@@ -409,7 +410,8 @@ if __name__ == "__main__":
         if r["TradingView exit"] is None and r["TradingView says"] not in (None, "Not closed"):
             r["TradingView exit"] = r.get("Exit time")  # rows written before this column existed
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
-        check_with_prices(r); apply_confirmation(r); journal.autofill_decision(r)
+        check_with_prices(r); apply_confirmation(r)
+        if has_journal: journal.autofill_decision(r)
     print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
           + (" — dry run, nothing written" if a.dry_run else ""))
     print("updated from the clipboard:")

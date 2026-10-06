@@ -46,7 +46,7 @@ uv run -q --with openpyxl python scripts/extract.py
 ```
 
 Options:
-- `--decision Filtered` / `--decision Missed` covers "add these filtered trades", "add these missed trades" and "update these trades to filtered". It sets **Decision** on every drawing on the clipboard: drawings not in the sheet are added, ones already there are updated. `--decision Taken` clears it (blank = taken). The workbook needs journal columns.
+- `--decision Filtered` / `--decision Missed` covers "add these filtered trades", "add these missed trades" and "update these trades to filtered". It sets **Decision** on every drawing on the clipboard: drawings not in the sheet are added, ones already there are updated. Without `--decision`, new trades are **Taken**; `--decision Taken` sets it back ("mark these as taken"). The workbook needs journal columns.
 - `--remove` covers "remove these trades". It deletes the clipboard's drawings from the sheet. **Run it with `--dry-run` first, show the user the list, and remove only after they confirm.** Drawings not in the sheet are listed as such.
 - `--recheck` re-assesses every trade already in the workbook (no clipboard), for example after new price data arrives;
 - `--dry-run` shows what would be logged and writes nothing;
@@ -83,13 +83,13 @@ next to a Backtest file). Without `--from`, the lists start with a few generic e
   - **Level rows:** VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low, each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list.
   - **A blank Distance** switches auto-fill off.
 - **Columns:**
-  - **Decision:** blank means taken; otherwise Filtered or Missed.
+  - **Decision:** **Taken** by default for every trade added, or Filtered or Missed. Taken with filter reasons means the user took it because something outweighed them, noted in Filter notes.
   - **Filter 1–3**, **Confluence 1–3**, **Grade reason 1–3:** dropdowns.
   - **Filter notes**, **Grade notes**, **General notes:** free text.
   - **Grade:** the user's call. **Rule grade:** an Excel formula.
   - **Auto confluence:** what the script found, with distances. A level the user deleted is never re-added.
-- **Safeguard:** a filter reason with a blank Decision becomes **Filtered** on the next run, unless Grade is F. Excel highlights mismatches live. So `--decision Taken` on a trade that has filter reasons turns back into Filtered: grade it F if it was taken against the rules.
-- **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (taken and missed, i.e. Decision is not Filtered).
+- **Safeguard:** Excel turns Decision orange when it doesn't add up: Filtered with no filter reason, Missed with one, or Taken with filter reasons but no Filter notes saying why. Nothing is changed automatically. Rule grade never gives F; that's the user's call. In the Breakdown, Taken and Missed count as unfiltered.
+- **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (Taken and Missed, i.e. Decision is not Filtered).
 
 Every rebuild keeps both sheets and all journal values, including when the drawing is re-copied with new levels. A
 journal made before the Auto confluence sheet existed gets one that keeps its old behaviour: VWAP and the 50/100/200 SMA
