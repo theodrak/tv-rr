@@ -34,6 +34,7 @@ DEFAULTS = {
     "symbols": {},
     "indicators_1m": False,  # keep other indicator columns from 1-minute exports too (large files)
     "indicator_names": {},   # exported plot name → column name, e.g. {"Buy": "Long signal"}
+    "indicator_columns": False,  # also add a "TV <name>" column per stored indicator to the trade log
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
                 "timeframe": None, "format": ["html"]},
 }

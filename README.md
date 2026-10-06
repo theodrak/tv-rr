@@ -109,14 +109,17 @@ values are in the file. Some examples:
 - **Supertrend** or **Ichimoku**, for trend filters;
 - **Anchored VWAP** or **Volume Profile** levels, for confluence.
 
-**Every other indicator column is kept.** Each indicator on the chart becomes a **TV <name>** column in the trade log,
-named after the plot (e.g. **TV RSI**, **TV MACD**). It shows the value on the last candle that closed before the entry,
-so you can filter your trades by it, for example "RSI above 70". There's no limit on the number of indicators, and any
-indicator that plots a number works, including your own Pine scripts.
+**Every other indicator column is kept in the price store.** Each indicator on the chart is stored under its plot's
+name, candle by candle, so Claude can answer questions about it later, e.g. "how did my trades do when RSI was above
+70?". There's no limit on the number of indicators, and any indicator that plots a number works, including your own
+Pine scripts.
+
+The trade log stays as it is by default. If you'd like each indicator as a **TV <name>** column there too (its value on
+the last candle that closed before the entry), turn it on with `config.py set indicator_columns true`.
 
 - **Moving averages are named for you.** TradingView exports a built-in moving average under a plain name ("EMA",
   "MA") and doesn't let you rename it, so two EMAs export as "EMA" and "EMA (2)". The skill works out each one's length
-  from the prices, so the columns read **TV EMA 9** and **TV EMA 20**.
+  from the prices, so they're known as **EMA 9** and **EMA 20**.
 - **Other repeated or unclear names** get numbered ("Plot", "Plot (2)"). Give them your own names with
   `config.py set indicator_names '{"Plot": "RSI 14", "Plot (2)": "RSI signal"}'`.
 - **Signals that only fire on some candles** (buy/sell arrows) are blank on the candles where they didn't fire.
@@ -167,7 +170,7 @@ exporting first.
 What to expect:
 - **Recent data only:** about a few days of 1-minute bars, so it's for filling gaps, not building history. Exports are
   still the main source.
-- **Prices and volume only:** the TV indicator columns still come from your exports.
+- **Prices and volume only:** indicator values still come from your exports.
 - **Exports win:** where an export and the MCP overlap, the export's bars are kept.
 - **Without it, nothing breaks:** everything works from exports alone.
 

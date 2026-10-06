@@ -23,9 +23,9 @@ Per trade, on the Trades sheet:
                     than FLAT_PTS; "Upwards turning" / "Downwards turning" when it still moves that way but at less
                     than half the pace of the 10 minutes before (flattening out); otherwise Upwards / Downwards
   VWAP immediate slope   that 10-minute slope against the trade: With / Against / Flat
-  TV <name>         every other indicator column on the exported chart (tv-rr-trades prices.py keeps them), at the last
-                    bar closed before the entry, on the trade's bar size when exported, else the smallest held.
-                    Grouped at the end of the sheet.
+  TV <name>         only with config indicator_columns on: every other indicator column on the exported chart
+                    (tv-rr-trades prices.py always keeps them in the price store), at the last bar closed before the
+                    entry, on the trade's bar size when exported, else the smallest held. Grouped at the end of the sheet.
 "Open" = neither level reached in the price data yet. Blank = not filled, no price data, or levels unknown.
 Breakdown sheet: per variant (Planned, 1/2 stop, 0.5R … 2.5R targets, break-even and ATR versions) and per direction (All / Long / Short) — trades, wins,
 losses, open, win %, net points, net R, and MAE for winners and losers.
@@ -99,9 +99,11 @@ def is_tv_indicator(h):
 
 def tv_values(ws, head):
     """{sheet row: {"TV <plot name>": value}} from the indicator columns stored with the price exports, read at the last
-    bar closed before each entry (no peeking), on the trade's bar size when it was exported."""
+    bar closed before each entry (no peeking), on the trade's bar size when it was exported. Empty unless config
+    indicator_columns is on: the values are always kept in the price store, but the log only shows them on request
+    (and any TV columns already there are then removed)."""
     out = {}
-    if "Entry (UTC)" not in head: return out
+    if "Entry (UTC)" not in head or not config.load().get("indicator_columns"): return out
     ce, cs, ct = head.index("Entry (UTC)") + 1, head.index("Symbol") + 1, (head.index("Timeframe") + 1 if "Timeframe" in head else None)
     for i in range(2, ws.max_row + 1):
         e, sym = ws.cell(i, ce).value, ws.cell(i, cs).value
