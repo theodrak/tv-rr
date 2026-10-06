@@ -106,10 +106,37 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
 - **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
   - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present.
   - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in `<size>m.indicators.json` beside the bars. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up.
-- **Builds 5m, 15m, 30m and 60m bars from 1m** wherever no export of that size exists; an exported bar always wins.
+- **Builds 5m, 15m, 30m, 60m and 4h bars from 1m** wherever no export of that size exists; an exported bar always wins.
+  - **5m to 60m** are on the clock.
+  - **4h** starts at the symbol's **session start** (the rollover), as TradingView builds it. The day's first and last 4h bar only cover the trading inside them; for example, DE30 opening at 02:15 Berlin gives a 45-minute first bar. A 4h bar never crosses into the next trading day.
 - **`prices.py status`** lists what is held.
 - **`prices.py export SYMBOL 1m out.csv`** writes one merged CSV.
-- **TradingView MCP top-up, if connected:** when a trade says **Open** or **No price data yet**, fetch bars with `mcp-tv-get-ohlcv`. Save the returned JSON to a file and run `prices.py add SYMBOL 5m FILE`, then `extract.py --recheck`. Keep top-ups to a few hundred bars, because the MCP holds only a few days of 1m history.
+- **TradingView MCP top-up:** see the next section.
+
+## TradingView MCP server (optional)
+
+The claude.ai **TradingView** connector can fill recent gaps without an export. Its tools are named
+`mcp-tv-get-ohlcv`, `mcp-tv-search-symbols` and so on, with a prefix that depends on how it is connected.
+
+**Check it's there.** Look for a `mcp-tv-get-ohlcv` tool, using ToolSearch with "tradingview ohlcv" if tools are deferred.
+- **Not there:** tell the user to connect or sign in to it under claude.ai **Settings → Connectors**, or with `/mcp` in a terminal session, then carry on with exports.
+- **Never stop logging because the MCP is missing:** exports cover everything it does.
+
+**When to use it:**
+- a trade says **Open** or **No price data yet**, because the exports end before its exit;
+- the user asks for "today's" data before exporting.
+
+**How:**
+1. **Find the symbol.** Use the trade's symbol as written (e.g. `OANDA:DE30EUR`). If the tool rejects it, look it up with `mcp-tv-search-symbols`.
+2. **Fetch bars** with `mcp-tv-get-ohlcv` at 1m, or 5m for a longer reach. Ask for a few hundred bars covering the gap: the MCP keeps only a few days of 1m history.
+3. **Save the result** as it came back to a `.json` file in the scratchpad.
+4. **Add it:** `prices.py add SYMBOL 1m FILE`. It reads the usual shapes (`{"bars": […]}`, `{"data": […]}`, a plain list, `[time, open, high, low, close, volume]` rows, or UDF-style columns), with times in seconds, milliseconds or ISO text. 1m bars rebuild the 5m to 4h bars automatically.
+5. **Re-check:** `extract.py --recheck` (with `--out` for a workbook that isn't the default).
+
+**Limits:**
+- MCP bars are prices and volume only, with no indicator columns, so the TV columns still come from exports.
+- Where an export and MCP bars overlap, the export wins.
+- MCP bars live in `mcp_<size>.json` beside the exports' bars and survive `ingest --rebuild`.
 
 ## Rules the script relies on (don't "simplify" them)
 

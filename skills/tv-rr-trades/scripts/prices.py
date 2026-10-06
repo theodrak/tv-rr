@@ -2,7 +2,7 @@
 
 usage: prices.py ingest [--rebuild]          read every export in the configured folders (only changed files cost time)
        prices.py status                      what data is held, per symbol and bar size
-       prices.py add SYMBOL INTERVAL FILE    merge bars saved from the TradingView MCP (JSON: {"bars": [{t,o,h,l,c,v}]})
+       prices.py add SYMBOL INTERVAL FILE    merge bars saved from the TradingView MCP (any usual JSON shape: mcp_bars)
        prices.py export SYMBOL INTERVAL OUT.csv   write one merged CSV of the stored bars (e.g. 1m, 5m)
 
 Exports: in TradingView, open the chart, then "Export chart data…" (CSV). The file name TradingView gives it
@@ -14,7 +14,8 @@ Where exports overlap, the newest file wins, except for its last bar, which may 
 
 Bars are KEPT once ingested: deleting an old export does not remove its history. `ingest --rebuild` starts again from
 the files present. Where 1m bars exist but coarser ones don't (a gap in the 5m exports, or no 5m exports at all), 5m,
-15m, 30m and 60m bars are built from the 1m bars; an exported bar always wins over a built one.
+15m, 30m, 60m and 4h bars are built from the 1m bars (4h from the session start: see DERIVED); an exported bar always
+wins over a built one.
 """
 import bisect, csv, datetime as dt, json, os, re, sys
 from pathlib import Path
@@ -24,7 +25,11 @@ import config  # noqa: E402
 
 EXTRA = {"volume": "v", "vwap": "vwap", "kernel regression estimate": "kr"}
 BASE_COLS = {"time", "open", "high", "low", "close", *EXTRA}
-DERIVED = (5, 15, 30, 60)  # bar sizes built from 1m where the exports leave gaps; on the clock, so no session rules needed
+DERIVED = (5, 15, 30, 60, 240)  # bar sizes built from 1m where the exports leave gaps
+# 5m-60m are on the clock. 4h is anchored at the symbol's session start (config session_start, default 17:00 New York,
+# the FX/CFD rollover), as TradingView builds it: 17:00, 21:00, 01:00 … New York. The day's first and last 4h bar hold
+# only the trading inside them (a market that opens at 02:15 or closes at 22:00 gives shorter bars there), and no bar
+# crosses into the next trading day.
 _cache = {}
 
 
@@ -179,6 +184,22 @@ def write_group(sym, m, bars, verbose=True, note=""):
     _cache.pop((sym, m), None)
 
 
+def day_start(sym, t):
+    """Start (UTC seconds) of the trading day containing t, from the symbol's session start."""
+    h, mi, z = config.session_start(sym)
+    local = dt.datetime.fromtimestamp(t, z)
+    s = local.replace(hour=h, minute=mi, second=0, microsecond=0)
+    if local < s: s -= dt.timedelta(days=1)
+    return int(s.timestamp())
+
+
+def bucket(sym, m, t):
+    """The bar of size m (minutes) that t falls in: on the clock up to 60m, from the session start above that."""
+    if m <= 60: return t - t % (m * 60)
+    s = day_start(sym, t)
+    return s + (t - s) // (m * 60) * m * 60
+
+
 def derive(sym, verbose=True):
     """Fill 5m/15m/30m/60m bars from 1m wherever no exported bar exists. A bucket is built only once a later 1m bar
     shows it has closed. Built bars carry "from": "1m"; VWAP and the kernel line are not copied, because they depend
@@ -189,16 +210,15 @@ def derive(sym, verbose=True):
         gf = _group_file(sym, m)
         have = [b for b in json.loads(gf.read_text())["bars"] if not b.get("from")] if gf.exists() else []
         real = {b["t"] for b in have}; built = {}
-        sec = m * 60
         for b in one:
-            k = b["t"] - b["t"] % sec
+            k = bucket(sym, m, b["t"])
             if k in real: continue
             if k not in built: built[k] = {"t": k, "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "from": "1m", "_v": []}
             x = built[k]; x["h"] = max(x["h"], b["h"]); x["l"] = min(x["l"], b["l"]); x["c"] = b["c"]
             x["_v"].append(b.get("v"))
-        last_t = one[-1]["t"]; out = []
+        last_k = bucket(sym, m, one[-1]["t"]); out = []
         for k, x in built.items():
-            if k + sec > last_t: continue  # still forming
+            if k >= last_k: continue  # still forming: closed once a later 1m bar falls in a later bar (a short 4h bar too)
             v = x.pop("_v")
             if v and all(y is not None for y in v): x["v"] = sum(v)
             out.append(x)
@@ -285,14 +305,45 @@ def at_or_before(bars, t):
     return i
 
 
+def mcp_bars(raw):
+    """Bars from whatever shape a TradingView MCP / API returns, as [{t, o, h, l, c, v?}] with t in UTC seconds:
+    {"bars": [...]}, {"data": [...]}, a plain list, a list of [time, open, high, low, close, volume?] rows, or columns
+    ({"t": [...], "o": [...], ...} as TradingView's UDF API gives). Times may be seconds, milliseconds or ISO text."""
+    if isinstance(raw, dict):
+        for key in ("bars", "data", "candles", "ohlcv", "result", "values"):
+            if key in raw: return mcp_bars(raw[key])
+        if isinstance(raw.get("t") or raw.get("time"), list):  # columns
+            cols = {k: raw[k] for k in raw if isinstance(raw[k], list)}
+            n = len(cols.get("t") or cols.get("time"))
+            return mcp_bars([{k: v[i] for k, v in cols.items() if i < len(v)} for i in range(n)])
+        return []
+    out = []
+    names = {"t": ("t", "time", "timestamp", "datetime", "date"), "o": ("o", "open"), "h": ("h", "high"),
+             "l": ("l", "low"), "c": ("c", "close"), "v": ("v", "volume")}
+    for b in raw or []:
+        if isinstance(b, (list, tuple)): b = dict(zip("tohlcv", b))
+        get = lambda k: next((b[x] for x in names[k] if x in b and b[x] is not None), None)
+        t = get("t")
+        if t is None: continue
+        if isinstance(t, str) and not re.fullmatch(r"\d+(\.\d+)?", t): t = _parse_time(t)
+        t = float(t); t = int(t / 1000) if t > 1e11 else int(t)  # milliseconds → seconds
+        try: x = {"t": t, **{k: float(get(k)) for k in "ohlc"}}
+        except (TypeError, ValueError): continue
+        if get("v") is not None: x["v"] = float(get("v"))
+        out.append(x)
+    return sorted(out, key=lambda x: x["t"])
+
+
 def add(sym, interval, file):
     m = int(re.sub(r"\D", "", interval) or 0) * (60 if interval.lower().endswith("h") else 1440 if interval.upper().endswith("D") else 1)
-    raw = json.loads(Path(file).read_text()); new = raw["bars"] if isinstance(raw, dict) else raw
+    new = mcp_bars(json.loads(Path(file).read_text()))
+    if not new: sys.exit(f"no bars found in {file}: expected time/open/high/low/close values")
     mf = _mcp_file(sym, m); mf.parent.mkdir(parents=True, exist_ok=True)
     old = json.loads(mf.read_text())["bars"] if mf.exists() else []
     mf.write_text(json.dumps({"bars": _merge([(old, 0), (new, 1)])}))
     rebuild(sym, m, load_registry())
     if m == 1: derive(sym)
+    print(f"added {len(new):,} {label(m)} bars for {sym} from {Path(file).name}")
 
 
 def status():
