@@ -114,6 +114,7 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
 - **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
   - **Where it's stored:** one SQLite database, `<TV_RR_HOME>/data/prices.db`, in WAL mode. It has tables `bars`, `indicators`, `series`, `symbols` and `exports`, plus the readable views `prices` and `indicator_values`. The `prices.py` docstring explains the source ranks.
     - Only new or changed export files are read. Their rows are upserted, and exports outrank MCP bars, which outrank bars built from 1m.
+    - A higher-ranked source that lacks a column (an export saved without the Volume plot, say) keeps the stored volume, VWAP or kernel value rather than blanking it, and a lower-ranked source fills in volume a stored bar is missing.
     - It must be on a local disk: it refuses synced folders. An old JSON store is moved in automatically the first time.
     - For one-off questions, query it directly with `sqlite3`.
   - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present (MCP top-ups are kept).
