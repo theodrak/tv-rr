@@ -67,7 +67,7 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
     favour = lambda price: max(0.0, (price - e) * sign)
     filled, mae, mfe = False, 0.0, 0.0
     trigger = e + sign * be_at * abs(tp - e) if be_at else None; at_be = False
-    for b in (x for x in bars if x["t"] >= t0):
+    for b in prices.since(bars, t0):
         p = candle_path(b)
         if not filled:
             k = next((k for k in range(3) if min(p[k], p[k + 1]) <= e <= max(p[k], p[k + 1])), None)

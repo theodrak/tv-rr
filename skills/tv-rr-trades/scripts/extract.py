@@ -137,7 +137,7 @@ def simulate(bars, t0, long_, e, sl, tp):
     the path reaches first. Returns (status, outcome, fill_bar, exit_bar, exit_price, inferred) — inferred is True when
     the call depended on the order inside one candle (fill and exit in the same candle, or both levels in one)."""
     filled, fill_b = False, None
-    for b in (x for x in bars if x["t"] >= t0):
+    for b in prices.since(bars, t0):
         p = candle_path(b); start = 0
         if not filled:
             for k in range(3):
@@ -163,7 +163,7 @@ def certain(bars, fill_b, sl, tp, outcome):
     (28 Jul 2026: entry and TP in one candle, no stop; the next candle reached the TP)."""
     in_fill = [n for n, lv in (("Stop", sl), ("TP", tp)) if fill_b["l"] <= lv <= fill_b["h"]]
     if len(in_fill) != 1 or in_fill[0] != outcome: return False
-    for b in (x for x in bars if x["t"] > fill_b["t"]):
+    for b in prices.since(bars, fill_b["t"], after=True):
         s_, t_ = b["l"] <= sl <= b["h"], b["l"] <= tp <= b["h"]
         if s_ and t_: return False
         if s_ or t_: return ("Stop" if s_ else "TP") == outcome

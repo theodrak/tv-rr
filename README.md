@@ -126,8 +126,8 @@ the last candle that closed before the entry), turn it on with `config.py set in
 - **Bar sizes:** values come from your 5-minute and larger exports, taken on the trade's own bar size when you exported
   it. 1-minute exports are big, so their indicator columns are skipped unless you set
   `config.py set indicators_1m true`.
-- **Keep the same indicators on the chart** when you export a newer file. Where exports overlap, the newest file's
-  candles replace the older ones, and a candle only keeps the indicators that were on the chart for that export.
+- **Where exports overlap,** the newest file's values win, indicator by indicator. An indicator you've since taken
+  off the chart keeps its older values.
 
 ### 2. Load the history you want
 
@@ -152,6 +152,19 @@ need. The bars are already loaded from TradingView's servers, so this takes only
 - **Deleting old exports is safe:** bars are kept once read. Run `prices.py ingest --rebuild` to start again from the files present.
 
 ### Your data
+
+Everything is kept in one SQLite database, `~/.tv-rr/data/prices.db`:
+- the candles for every instrument and bar size;
+- every indicator column from your exports;
+- the list of export files already read.
+
+You can open it with any SQLite tool, such as [DB Browser for SQLite](https://sqlitebrowser.org). The `prices` and
+`indicator_values` views show symbol names and readable times. Loading an export reads only that file, and a top-up
+takes milliseconds.
+
+The database runs in WAL mode, so it can be read while it's being updated. It must be on a local disk, not in iCloud,
+Google Drive, Dropbox or OneDrive (the skill refuses a synced folder). An older JSON store is moved in automatically the
+first time.
 
 - `prices.py status` lists what is held for each symbol and bar size.
 - `prices.py export OANDA:EURUSD 1m merged.csv` writes one merged CSV of the stored bars, for opening in Excel.

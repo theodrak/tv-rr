@@ -112,8 +112,12 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
 
 **Ingesting:**
 - **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
-  - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present.
-  - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in `<size>m.indicators.json` beside the bars. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up. They stay in the store; the trade log only gets **TV <name>** columns with `config.py set indicator_columns true`. To answer a question about an indicator ("my win rate when RSI > 70"), read it per trade with `prices.indicators_at(symbol, entry_utc_seconds, 5)`.
+  - **Where it's stored:** one SQLite database, `<TV_RR_HOME>/data/prices.db`, in WAL mode. It has tables `bars`, `indicators`, `series`, `symbols` and `exports`, plus the readable views `prices` and `indicator_values`. The `prices.py` docstring explains the source ranks.
+    - Only new or changed export files are read. Their rows are upserted, and exports outrank MCP bars, which outrank bars built from 1m.
+    - It must be on a local disk: it refuses synced folders. An old JSON store is moved in automatically the first time.
+    - For one-off questions, query it directly with `sqlite3`.
+  - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present (MCP top-ups are kept).
+  - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in the database's `indicators` table. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up. They stay in the store; the trade log only gets **TV <name>** columns with `config.py set indicator_columns true`. To answer a question about an indicator ("my win rate when RSI > 70"), read it per trade with `prices.indicators_at(symbol, entry_utc_seconds, 5)`.
 - **Builds 5m, 15m, 30m, 60m and 4h bars from 1m** wherever no export of that size exists; an exported bar always wins.
   - **5m to 60m** are on the clock.
   - **4h** starts at the symbol's **session start** (the rollover), as TradingView builds it. The day's first and last 4h bar only cover the trading inside them; for example, DE30 opening at 02:15 Berlin gives a 45-minute first bar. A 4h bar never crosses into the next trading day.
@@ -148,7 +152,7 @@ The claude.ai **TradingView** connector can fill recent gaps without an export. 
 - The connector's 4h bars match the ones built from 1m exactly; checked on 38 DE30 bars on 6 Oct 2026, including the short first and last bar of the day.
 - MCP bars are prices and volume only, with no indicator columns, so the TV columns still come from exports.
 - Where an export and MCP bars overlap, the export wins.
-- MCP bars live in `mcp_<size>.json` beside the exports' bars and survive `ingest --rebuild`.
+- MCP bars are stored with source "mcp", rank below exports, and survive `ingest --rebuild`.
 
 ## Rules the script relies on (don't "simplify" them)
 

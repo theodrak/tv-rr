@@ -8,12 +8,13 @@ usage: prices.py ingest [--rebuild]          read every export in the configured
 Exports: in TradingView, open the chart, then "Export chart data…" (CSV). The file name TradingView gives it
 ("OANDA_DE30EUR, 5.csv", "BINANCE_BTCUSDT, 1 (2).csv") names the symbol; the bar size is read from the data. Any extra
 columns on the chart travel with it: a "Volume", "VWAP" or "Kernel Regression Estimate" column is used when present,
-and every other indicator column (RSI, MAs, levels…) is kept, under the plot's name, in a separate
-"<size>m.indicators.json" beside the bars, for exports of 5 minutes and up (1-minute too with config indicators_1m).
-Where exports overlap, the newest file wins, except for its last bar, which may still have been forming.
+and every other indicator column (RSI, MAs, levels…) is kept under the plot's name, for exports of 5 minutes and up
+(1-minute too with config indicators_1m). Where exports overlap, the newest file wins, except for its last bar, which
+may still have been forming. Everything lives in one SQLite database, <TV_RR_HOME>/data/prices.db (WAL mode; see
+"storage" below), which DB Browser for SQLite or any SQLite tool can open.
 
 Bars are KEPT once ingested: deleting an old export does not remove its history. `ingest --rebuild` starts again from
-the files present. Where 1m bars exist but coarser ones don't (a gap in the 5m exports, or no 5m exports at all), 5m,
+the files present (MCP top-ups are kept). Where 1m bars exist but coarser ones don't (a gap in the 5m exports, or no 5m exports at all), 5m,
 15m, 30m, 60m and 4h bars are built from the 1m bars (4h from the session start: see DERIVED); an exported bar always
 wins over a built one.
 """
@@ -107,81 +108,167 @@ def exports():
     return out
 
 
-def _group_file(sym, m): return config.DATA / safe(sym) / f"{label(m)}.json"
-def _ind_file(sym, m): return config.DATA / safe(sym) / f"{label(m)}.indicators.json"
-def _mcp_file(sym, m): return config.DATA / safe(sym) / f"mcp_{label(m)}.json"
+# ---- storage: one SQLite database, ~/.tv-rr/data/prices.db, in WAL mode ------------------------------------------------
+# symbols     id ↔ name ("OANDA:DE30EUR"), so the big tables store a small number instead of the text.
+# bars        one row per symbol, bar size (tf, minutes) and bar time (t, UTC seconds). src: 0 export, 1 MCP top-up,
+#             2 built from 1m. `rank` says which source wins a clash: an export's file mtime (a newer export beats an older
+#             one), RANK_MIGRATED for bars carried over from the old JSON store, RANK_MCP for MCP top-ups, RANK_BUILT for
+#             bars built from 1m. A write only replaces a row of equal or lower rank, so exports > MCP > built, whatever
+#             order things arrive in.
+# series      id ↔ (symbol, bar size, plot name) of an exported indicator column.
+# indicators  one row per series and bar time: every exported indicator value, same ranks.
+# exports     the export files already read (path, mtime, size, symbol, bar size), so unchanged files cost nothing.
+# Views for people (DB Browser for SQLite or any SQLite tool): `prices` and `indicator_values`, with symbol and plot
+# names and readable UTC times.
+RANK_BUILT, RANK_MCP, RANK_MIGRATED = -2, -1, 1
+SRC = {"export": 0, "mcp": 1, "1m": 2}
+SYNCED = ("Mobile Documents", "CloudStorage", "Google Drive", "GoogleDrive", "Dropbox", "OneDrive", "iCloud")
+SCHEMA = """
+create table if not exists symbols (id integer primary key, name text unique not null);
+create table if not exists bars (sid integer, tf integer, t integer, o real, h real, l real, c real, v real, vwap real,
+    kr real, src integer, rank integer, primary key (sid, tf, t)) without rowid;
+create table if not exists series (id integer primary key, sid integer, tf integer, name text, unique (sid, tf, name));
+create table if not exists indicators (series integer, t integer, value real, rank integer, primary key (series, t))
+    without rowid;
+create table if not exists exports (path text primary key, mtime real, size integer, symbol text, tf integer);
+create view if not exists prices as select s.name as symbol, b.tf as minutes, datetime(b.t, 'unixepoch') as time_utc,
+    b.o as open, b.h as high, b.l as low, b.c as close, b.v as volume, b.vwap, b.kr as kernel,
+    case b.src when 0 then 'export' when 1 then 'mcp' else 'built from 1m' end as source
+    from bars b join symbols s on s.id = b.sid;
+create view if not exists indicator_values as select s.name as symbol, r.tf as minutes, r.name as indicator,
+    datetime(i.t, 'unixepoch') as time_utc, i.value
+    from indicators i join series r on r.id = i.series join symbols s on s.id = r.sid;
+"""
+_db = None
+_ids = {}
 
 
-def _merge(sources):
-    """sources: [(bars, mtime)] — later mtimes win, except a newer file's last bar never replaces an existing one."""
-    out = {}
-    for bars, _ in sorted(sources, key=lambda s: s[1]):
-        for n, b in enumerate(bars):
-            if n == len(bars) - 1 and b["t"] in out: continue
-            out[b["t"]] = b
-    return [out[t] for t in sorted(out)]
+def db_path():
+    return config.DATA / "prices.db"
+
+
+def db():
+    """The price database, opened once per run in WAL mode (readers never wait for a writer)."""
+    global _db
+    if _db is None:
+        import sqlite3
+        path = db_path()
+        if any(x in str(path) for x in SYNCED):
+            sys.exit(f"The price database can't live in a synced folder ({path}): WAL mode needs a local disk. "
+                     "Point TV_RR_HOME somewhere local.")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _db = sqlite3.connect(path, timeout=60)
+        _db.execute("pragma journal_mode=wal"); _db.execute("pragma synchronous=normal")
+        _db.executescript(SCHEMA)
+        migrate_json(_db)
+    return _db
+
+
+def sid(sym, create=False):
+    """The symbol's id (None when unknown and not created)."""
+    if sym not in _ids:
+        r = db().execute("select id from symbols where name=?", (sym,)).fetchone()
+        if not r and create: db().execute("insert into symbols (name) values (?)", (sym,)); r = db().execute("select last_insert_rowid()").fetchone()
+        if not r: return None
+        _ids[sym] = r[0]
+    return _ids[sym]
+
+
+def series_id(sym, m, name):
+    k = ("series", sym, m, name)
+    if k not in _ids:
+        s_ = sid(sym, create=True)
+        db().execute("insert or ignore into series (sid, tf, name) values (?,?,?)", (s_, m, name))
+        _ids[k] = db().execute("select id from series where sid=? and tf=? and name=?", (s_, m, name)).fetchone()[0]
+    return _ids[k]
+
+
+def put_bars(sym, m, bars, rank, src, keep_last=False):
+    """Upsert bars; a row is only replaced by one of equal or higher rank. keep_last: the last bar never replaces an
+    existing one (an export's last bar may still have been forming)."""
+    q = ("insert into bars values (?,?,?,?,?,?,?,?,?,?,?,?) on conflict (sid, tf, t) do update set o=excluded.o, "
+         "h=excluded.h, l=excluded.l, c=excluded.c, v=excluded.v, vwap=excluded.vwap, kr=excluded.kr, src=excluded.src, "
+         "rank=excluded.rank where excluded.rank >= bars.rank")
+    s_, code, rank = sid(sym, create=True), SRC[src], int(rank)
+    rows = [(s_, m, b["t"], b["o"], b["h"], b["l"], b["c"], b.get("v"), b.get("vwap"), b.get("kr"), code, rank) for b in bars]
+    if keep_last and rows:
+        db().execute("insert or ignore into bars values (?,?,?,?,?,?,?,?,?,?,?,?)", rows.pop())
+    db().executemany(q, rows)
+    _cache.pop((sym, m), None); _cache.pop(("ranges", sym), None)
+
+
+def put_indicators(sym, m, rows, rank):
+    q = ("insert into indicators values (?,?,?,?) on conflict (series, t) do update set value=excluded.value, "
+         "rank=excluded.rank where excluded.rank >= indicators.rank")
+    rank = int(rank)
+    db().executemany(q, ((series_id(sym, m, k), r["t"], v, rank) for r in rows for k, v in r.items() if k != "t"))
+    _cache.pop(("ind", sym, m), None)
+
+
+def migrate_json(con):
+    """One-time move from the old JSON store (<symbol>/<size>m.json, <size>m.indicators.json, mcp_<size>m.json,
+    _exports.json). The JSON files are left where they are."""
+    if con.execute("select 1 from bars limit 1").fetchone() or not config.DATA.exists(): return
+    dirs = [d for d in config.DATA.iterdir() if d.is_dir() and list(d.glob("*m.json"))]
+    if not dirs: return
+    global _db
+    _db = con
+    print("moving the price data into prices.db (one time)…", file=sys.stderr)
+    for d in dirs:
+        for f in d.glob("*m.json"):
+            j = json.loads(f.read_text()); sym = j.get("symbol"); bars = j["bars"]
+            if f.name.startswith("mcp_"):
+                if not sym: continue  # older MCP files carry no symbol: their bars are already in the merged files
+                put_bars(sym, int(re.sub(r"\D", "", f.stem)), bars, RANK_MCP, "mcp")
+                continue
+            m = j["minutes"]
+            put_bars(sym, m, [b for b in bars if not b.get("from")], RANK_MIGRATED, "export")
+            put_bars(sym, m, [b for b in bars if b.get("from")], RANK_BUILT, "1m")
+        for f in d.glob("*m.indicators.json"):
+            j = json.loads(f.read_text()); put_indicators(j["symbol"], j["minutes"], j["bars"], RANK_MIGRATED)
+    reg = config.DATA / "_exports.json"
+    if reg.exists():
+        con.executemany("insert or replace into exports values (?,?,?,?,?)",
+                        [(k, e["sig"][0], e["sig"][1], e["symbol"], e["minutes"]) for k, e in json.loads(reg.read_text()).items()])
+    con.commit()
 
 
 def ingest(verbose=True, fresh=False):
-    reg = {} if fresh else load_registry(); known = set(config.load()["symbols"])
-    files = exports(); changed = set(); entries = {}
-    for p in files:
-        sig = [p.stat().st_mtime, p.stat().st_size]; prev = reg.get(str(p))
-        if prev and prev["sig"] == sig and prev.get("ind"): entries[str(p)] = prev; continue  # "ind": indicator columns read
+    """Read new or changed exports. Only those files are read: their bars and indicator columns are upserted with the
+    file's mtime as rank, so the newest file wins where exports overlap. fresh (--rebuild) forgets every export bar and
+    reads all files present again (MCP top-ups are kept)."""
+    con = db(); known = set(config.load()["symbols"])
+    if fresh:
+        con.execute("delete from bars where src in (0, 2)")  # exports and the bars built from them; MCP top-ups stay
+        con.execute("delete from indicators"); con.execute("delete from exports"); _cache.clear()
+    seen = {r[0]: (r[1], r[2]) for r in con.execute("select path, mtime, size from exports")}
+    changed = {}
+    for p in sorted(exports(), key=lambda p: p.stat().st_mtime):
+        sig = (p.stat().st_mtime, p.stat().st_size)
+        if seen.get(str(p)) == sig: continue
         sym = symbol_from_name(p.name, known)
-        with open(p, newline="") as fh:
-            r = csv.reader(fh); head = _columns(next(r, []))
-            ts = []
-            for row in r:
-                if len(ts) >= 200: break
-                try: ts.append(_parse_time(row[head.index("time")]))
-                except (ValueError, IndexError): pass
-        m = minutes_of(ts)
-        if not sym or not m:
+        bars, m, ind = read_export(p, indicators=True) if sym else (None, None, None)
+        if not sym or not bars or not m:
             if verbose: print(f"skipped {p.name}: not a TradingView export (no symbol in the name or no time column)")
             continue
-        entries[str(p)] = {"sig": sig, "symbol": sym, "minutes": m, "ind": 1}; changed.add((sym, m))
-    if fresh:
-        for d in (config.DATA.iterdir() if config.DATA.exists() else []):
-            for f in (d.glob("*m.json") if d.is_dir() else []):
-                if not f.name.startswith("mcp_"): f.unlink()
-    for sym, m in sorted(changed): rebuild(sym, m, entries, verbose, keep=not fresh)
-    for sym in sorted({s_ for s_, _ in changed}):  # a rebuilt group drops its built bars, so build them again
-        derive(sym, verbose)
-    save_registry(entries); _cache.clear()
-    return changed
+        put_bars(sym, m, bars, sig[0], "export", keep_last=True)
+        if ind and (m >= 5 or config.load().get("indicators_1m")): put_indicators(sym, m, ind, sig[0])
+        con.execute("insert or replace into exports values (?,?,?,?,?)", (str(p), sig[0], sig[1], sym, m))
+        first = changed.get((sym, m)); changed[(sym, m)] = min(first, bars[0]["t"]) if first else bars[0]["t"]
+        if verbose: print(f"read {p.name}: {sym} {label(m)}, {len(bars):,} bars")
+    con.commit()
+    for sym in sorted({s_ for s_, _ in changed}):
+        if (sym, 1) in changed or fresh: derive(sym, verbose, since=None if fresh else changed[(sym, 1)])
+    if verbose:
+        for (sym, m) in sorted(changed): summary(sym, m)
+    return set(changed)
 
 
-def rebuild(sym, m, entries, verbose=True, keep=True):
-    """Merge every export of this symbol and bar size, newest last. With keep, the bars already stored are the base,
-    so history from exports that have since been deleted survives."""
-    gf = _group_file(sym, m); sources = []
-    if keep and gf.exists(): sources.append(([b for b in json.loads(gf.read_text())["bars"] if not b.get("from")], -1))
-    mf = _mcp_file(sym, m)
-    if mf.exists(): sources.append((json.loads(mf.read_text())["bars"], 0))
-    keep_ind = m >= 5 or config.load().get("indicators_1m")
-    inf = _ind_file(sym, m); ind_sources = []
-    if keep and keep_ind and inf.exists(): ind_sources.append((json.loads(inf.read_text())["bars"], -1))
-    for k, e in entries.items():
-        if e["symbol"] == sym and e["minutes"] == m and Path(k).exists():
-            bars, _, ind = read_export(k, indicators=True)
-            if bars: sources.append((bars, os.path.getmtime(k)))
-            if ind and keep_ind: ind_sources.append((ind, os.path.getmtime(k)))
-    write_group(sym, m, _merge(sources), verbose)
-    if ind_sources:
-        rows = _merge(ind_sources)
-        tmp = inf.with_suffix(".tmp"); tmp.write_text(json.dumps({"symbol": sym, "minutes": m, "bars": rows})); tmp.replace(inf)
-        _cache.pop(("ind", sym, m), None)
-    elif not keep and inf.exists(): inf.unlink()
-
-
-def write_group(sym, m, bars, verbose=True, note=""):
-    gf = _group_file(sym, m); gf.parent.mkdir(parents=True, exist_ok=True)
-    tmp = gf.with_suffix(".tmp"); tmp.write_text(json.dumps({"symbol": sym, "minutes": m, "bars": bars})); tmp.replace(gf)
-    if verbose and bars:
-        a, b = (dt.datetime.fromtimestamp(x, config.tz()) for x in (bars[0]["t"], bars[-1]["t"]))
-        print(f"{sym} {label(m)}: {len(bars):,} bars, {a:%d %b %Y %H:%M} → {b:%d %b %Y %H:%M}{note}")
-    _cache.pop((sym, m), None)
+def summary(sym, m, note=""):
+    n, a, z = db().execute("select count(*), min(t), max(t) from bars where sid=? and tf=?", (sid(sym), m)).fetchone()
+    if n:
+        a, z = (dt.datetime.fromtimestamp(x, config.tz()) for x in (a, z))
+        print(f"{sym} {label(m)}: {n:,} bars, {a:%d %b %Y %H:%M} → {z:%d %b %Y %H:%M}{note}")
 
 
 def day_start(sym, t):
@@ -200,20 +287,21 @@ def bucket(sym, m, t):
     return s + (t - s) // (m * 60) * m * 60
 
 
-def derive(sym, verbose=True):
-    """Fill 5m/15m/30m/60m bars from 1m wherever no exported bar exists. A bucket is built only once a later 1m bar
-    shows it has closed. Built bars carry "from": "1m"; VWAP and the kernel line are not copied, because they depend
-    on the bar size (indicators.py recomputes them from the volume)."""
-    one = load(sym, 1)
+def derive(sym, verbose=True, since=None):
+    """Build 5m/15m/30m/60m/4h bars from 1m wherever no exported or MCP bar exists (they outrank built bars), from the
+    start of the trading day before `since` (every bar size starts afresh at a day start, so the first rebuilt bar is
+    whole), or over all the 1m history. A bar is built only once a later 1m bar shows it has closed. Built bars have
+    src "1m"; VWAP and the kernel line are not copied, because they depend on the bar size (indicators.py recomputes
+    them from the volume)."""
+    lo = day_start(sym, since) - 86400 if since else 0
+    one = [dict(zip("tohlcv", r)) for r in db().execute(
+        "select t, o, h, l, c, v from bars where sid=? and tf=1 and t >= ? order by t", (sid(sym), lo))]
     if not one: return
     for m in DERIVED:
-        gf = _group_file(sym, m)
-        have = [b for b in json.loads(gf.read_text())["bars"] if not b.get("from")] if gf.exists() else []
-        real = {b["t"] for b in have}; built = {}
+        built = {}
         for b in one:
             k = bucket(sym, m, b["t"])
-            if k in real: continue
-            if k not in built: built[k] = {"t": k, "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "from": "1m", "_v": []}
+            if k not in built: built[k] = {"t": k, "o": b["o"], "h": b["h"], "l": b["l"], "c": b["c"], "_v": []}
             x = built[k]; x["h"] = max(x["h"], b["h"]); x["l"] = min(x["l"], b["l"]); x["c"] = b["c"]
             x["_v"].append(b.get("v"))
         last_k = bucket(sym, m, one[-1]["t"]); out = []
@@ -222,10 +310,8 @@ def derive(sym, verbose=True):
             v = x.pop("_v")
             if v and all(y is not None for y in v): x["v"] = sum(v)
             out.append(x)
-        if not out and gf.exists(): continue
-        if not out and not have: continue
-        merged = sorted(have + out, key=lambda b: b["t"])
-        write_group(sym, m, merged, verbose, f" ({len(out):,} built from 1m)" if out else "")
+        put_bars(sym, m, out, RANK_BUILT, "1m")
+    db().commit()
 
 
 def export_csv(sym, interval, out):
@@ -241,43 +327,63 @@ def export_csv(sym, interval, out):
         for b in bars:
             u = dt.datetime.fromtimestamp(b["t"], dt.timezone.utc)
             w.writerow([u.strftime("%Y-%m-%d %H:%M"), u.astimezone(tz).strftime("%Y-%m-%d %H:%M"), b["o"], b["h"], b["l"], b["c"]]
-                       + [b.get(c, "") for c in cols] + [f"built from {b['from']}" if b.get("from") else "export"])
+                       + [b.get(c, "") for c in cols] + [f"built from {b['from']}" if b.get("from") else "export or MCP"])
     print(f"wrote {len(bars):,} {interval} bars for {sym} → {out}")
 
 
-def load_registry():
-    f = config.DATA / "_exports.json"
-    return json.loads(f.read_text()) if f.exists() else {}
-
-
-def save_registry(entries):
-    config.DATA.mkdir(parents=True, exist_ok=True); (config.DATA / "_exports.json").write_text(json.dumps(entries))
+def ranges(sym):
+    """[(minutes, first t, last t)] of the bars held for sym, smallest size first; remembered until bars change."""
+    k = ("ranges", sym)
+    if k not in _cache:
+        _cache[k] = db().execute("select tf, min(t), max(t) from bars where sid=? group by tf order by tf", (sid(sym),)).fetchall()
+    return _cache[k]
 
 
 def timeframes(sym):
-    d = config.DATA / safe(sym)
-    return sorted(int(p.stem[:-1]) for p in d.glob("*m.json") if not p.name.startswith("mcp_")) if d.exists() else []
+    return [m for m, _, _ in ranges(sym)]
+
+
+def since(bars, t, after=False):
+    """The bars from time t on (after=True: strictly after t), found by bisection instead of a scan."""
+    k = ("ts", id(bars), len(bars))
+    if k not in _cache: _cache[k] = [b["t"] for b in bars]
+    ts = _cache[k]
+    return bars[(bisect.bisect_right if after else bisect.bisect_left)(ts, t):]
 
 
 def load(sym, m):
+    """Every bar held for this symbol and size, oldest first, as {t, o, h, l, c, v?, vwap?, kr?, from?} (from = "1m"
+    for built bars); None when there are none."""
     k = (sym, m)
     if k not in _cache:
-        f = _group_file(sym, m)
-        _cache[k] = json.loads(f.read_text())["bars"] if f.exists() else None
+        out = []
+        for t, o, h, l, c, v, vw, kr, src in db().execute(
+                "select t, o, h, l, c, v, vwap, kr, src from bars where sid=? and tf=? order by t", (sid(sym), m)):
+            b = {"t": t, "o": o, "h": h, "l": l, "c": c}
+            if v is not None: b["v"] = v
+            if vw is not None: b["vwap"] = vw
+            if kr is not None: b["kr"] = kr
+            if src == 2: b["from"] = "1m"
+            out.append(b)
+        _cache[k] = out or None
     return _cache[k]
 
 
 def indicator_sizes(sym):
-    d = config.DATA / safe(sym)
-    return sorted(int(p.name.split("m.")[0]) for p in d.glob("*m.indicators.json")) if d.exists() else []
+    return [r[0] for r in db().execute("select distinct tf from series where sid=? order by tf", (sid(sym),))]
 
 
 def indicator_rows(sym, m):
+    """Every stored indicator bar for this symbol and size, oldest first, as {"t", <plot name>: value}."""
     k = ("ind", sym, m)
     if k not in _cache:
-        f = _ind_file(sym, m)
-        rows = json.loads(f.read_text())["bars"] if f.exists() else []; _cache[k] = ([r["t"] for r in rows], rows)
-    return _cache[k][1]
+        rows = {}
+        for t, name, value in db().execute(
+                "select i.t, r.name, i.value from indicators i join series r on r.id = i.series "
+                "where r.sid=? and r.tf=? order by i.t", (sid(sym), m)):
+            rows.setdefault(t, {"t": t})[name] = value
+        _cache[k] = sorted(rows.values(), key=lambda r: r["t"])
+    return _cache[k]
 
 
 def indicators_at(sym, t, prefer=None):
@@ -286,17 +392,18 @@ def indicators_at(sym, t, prefer=None):
     sizes = indicator_sizes(sym)
     if not sizes: return None, {}
     m = prefer if prefer in sizes else sizes[0]
-    indicator_rows(sym, m); ts, rows = _cache[("ind", sym, m)]
-    i = bisect.bisect_right(ts, t - m * 60) - 1
-    if i < 0 or t - ts[i] > 4 * 86400: return m, {}
-    return m, {n: v for n, v in rows[i].items() if n != "t"}
+    ids = [r[0] for r in db().execute("select id from series where sid=? and tf=?", (sid(sym), m))]
+    marks = ",".join("?" * len(ids))
+    row = db().execute(f"select max(t) from indicators where series in ({marks}) and t <= ?", (*ids, t - m * 60)).fetchone()
+    if not row or row[0] is None or t - row[0] > 4 * 86400: return m, {}
+    return m, dict(db().execute(f"select r.name, i.value from indicators i join series r on r.id = i.series "
+                                f"where i.series in ({marks}) and i.t = ?", (*ids, row[0])).fetchall())
 
 
 def bars_for(sym, t0=None):
     """(bars, "1m" | "5m" | …): the finest bars that cover the trade's entry time."""
-    for m in timeframes(sym):
-        b = load(sym, m)
-        if b and (t0 is None or b[0]["t"] <= t0 <= b[-1]["t"]): return b, label(m)
+    for m, a, z in ranges(sym):
+        if t0 is None or a <= t0 <= z: return load(sym, m), label(m)
     return None, None
 
 
@@ -341,32 +448,26 @@ def add(sym, interval, file):
     forming = [b for b in new if b["t"] + m * 60 > now]  # the MCP's last bar is still forming and would be kept as is
     new = [b for b in new if b not in forming]
     if not new: sys.exit(f"no closed bars found in {file}: expected time/open/high/low/close values")
-    mf = _mcp_file(sym, m); mf.parent.mkdir(parents=True, exist_ok=True)
-    old = json.loads(mf.read_text())["bars"] if mf.exists() else []
-    mf.write_text(json.dumps({"bars": _merge([(old, 0), (new, 1)])}))
-    rebuild(sym, m, load_registry())
-    if m == 1: derive(sym)
+    put_bars(sym, m, new, RANK_MCP, "mcp"); db().commit()  # exports outrank MCP bars, so overlaps keep the export
+    if m == 1: derive(sym, since=new[0]["t"])
     print(f"added {len(new):,} {label(m)} bars for {sym} from {Path(file).name}"
           + (f" (left out {len(forming)} still forming)" if forming else ""))
 
 
 def status():
-    if not config.DATA.exists(): print("no price data yet"); return
-    for d in sorted(p for p in config.DATA.iterdir() if p.is_dir()):
-        for f in sorted(d.glob("*m.json"), key=lambda p: int(re.sub(r"\D", "", p.stem) or 0)):
-            if f.name.startswith("mcp_"): continue
-            j = json.loads(f.read_text()); b = j["bars"]
-            if not b: continue
-            a, z = (dt.datetime.fromtimestamp(x, config.tz()) for x in (b[0]["t"], b[-1]["t"]))
-            extra = sorted({k for x in b[-50:] for k in x} - {"t", "o", "h", "l", "c", "from"})
-            nb = sum(1 for x in b if x.get("from"))
-            print(f"{j['symbol']:24} {label(j['minutes']):5} {len(b):>9,} bars  {a:%d %b %Y} → {z:%d %b %Y %H:%M}"
-                  + (f"  (+{', '.join(extra)})" if extra else "") + (f"  [{nb:,} built from 1m]" if nb else ""))
-            inf = _ind_file(j["symbol"], j["minutes"])
-            if inf.exists():
-                rows = json.loads(inf.read_text())["bars"]
-                names = sorted({k for r in rows[-500:] for k in r} - {"t"})
-                if names: print(f"{'':30} indicator columns: {', '.join(names)}")
+    con = db(); rows = con.execute("select s.name, b.tf, count(*), min(t), max(t), sum(src=2), sum(src=1), count(v), "
+                                   "count(vwap), count(kr) from bars b join symbols s on s.id = b.sid "
+                                   "group by s.name, b.tf order by s.name, b.tf").fetchall()
+    if not rows: print("no price data yet"); return
+    print(f"{db_path()}  ({db_path().stat().st_size / 1e6:,.0f} MB)")
+    for sym, m, n, a, z, nb, nm, nv, nvw, nkr in rows:
+        a, z = (dt.datetime.fromtimestamp(x, config.tz()) for x in (a, z))
+        extra = [x for x, k in (("v", nv), ("vwap", nvw), ("kr", nkr)) if k]
+        print(f"{sym:24} {label(m):5} {n:>9,} bars  {a:%d %b %Y} → {z:%d %b %Y %H:%M}"
+              + (f"  (+{', '.join(extra)})" if extra else "") + (f"  [{nb:,} built from 1m]" if nb else "")
+              + (f"  [{nm:,} from the MCP]" if nm else ""))
+        names = [r[0] for r in con.execute("select name from series where sid=? and tf=? order by name", (sid(sym), m))]
+        if names: print(f"{'':30} indicator columns: {', '.join(names)}")
 
 
 if __name__ == "__main__":
