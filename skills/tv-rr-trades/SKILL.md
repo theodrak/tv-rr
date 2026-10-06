@@ -128,12 +128,16 @@ The claude.ai **TradingView** connector can fill recent gaps without an export. 
 
 **How:**
 1. **Find the symbol.** Use the trade's symbol as written (e.g. `OANDA:DE30EUR`). If the tool rejects it, look it up with `mcp-tv-search-symbols`.
-2. **Fetch bars** with `mcp-tv-get-ohlcv` at 1m, or 5m for a longer reach. Ask for a few hundred bars covering the gap: the MCP keeps only a few days of 1m history.
+2. **Fetch bars** with `mcp-tv-get-ohlcv`:
+   - **Arguments:** `symbol`, `interval` (`1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1D`) and `count` (up to 5000). 5000 1m bars cover about 3½ trading days.
+   - **Size of the gap:** start from where `prices.py status` says the 1m data ends and ask for a few hundred bars.
+   - **What comes back:** `{"bars": [{t, o, h, l, c, v}]}`, with `t` in UTC seconds. Data is delayed 15+ minutes and the last bar is still forming.
 3. **Save the result** as it came back to a `.json` file in the scratchpad.
-4. **Add it:** `prices.py add SYMBOL 1m FILE`. It reads the usual shapes (`{"bars": […]}`, `{"data": […]}`, a plain list, `[time, open, high, low, close, volume]` rows, or UDF-style columns), with times in seconds, milliseconds or ISO text. 1m bars rebuild the 5m to 4h bars automatically.
+4. **Add it:** `prices.py add SYMBOL 1m FILE`. It leaves out any bar that hasn't closed yet, and reads the usual shapes (`{"bars": […]}`, `{"data": […]}`, a plain list, `[time, open, high, low, close, volume]` rows, or UDF-style columns), with times in seconds, milliseconds or ISO text. 1m bars rebuild the 5m to 4h bars automatically.
 5. **Re-check:** `extract.py --recheck` (with `--out` for a workbook that isn't the default).
 
 **Limits:**
+- The connector's 4h bars match the ones built from 1m exactly; checked on 38 DE30 bars on 6 Oct 2026, including the short first and last bar of the day.
 - MCP bars are prices and volume only, with no indicator columns, so the TV columns still come from exports.
 - Where an export and MCP bars overlap, the export wins.
 - MCP bars live in `mcp_<size>.json` beside the exports' bars and survive `ingest --rebuild`.

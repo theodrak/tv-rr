@@ -337,13 +337,17 @@ def mcp_bars(raw):
 def add(sym, interval, file):
     m = int(re.sub(r"\D", "", interval) or 0) * (60 if interval.lower().endswith("h") else 1440 if interval.upper().endswith("D") else 1)
     new = mcp_bars(json.loads(Path(file).read_text()))
-    if not new: sys.exit(f"no bars found in {file}: expected time/open/high/low/close values")
+    now = dt.datetime.now(dt.timezone.utc).timestamp()
+    forming = [b for b in new if b["t"] + m * 60 > now]  # the MCP's last bar is still forming and would be kept as is
+    new = [b for b in new if b not in forming]
+    if not new: sys.exit(f"no closed bars found in {file}: expected time/open/high/low/close values")
     mf = _mcp_file(sym, m); mf.parent.mkdir(parents=True, exist_ok=True)
     old = json.loads(mf.read_text())["bars"] if mf.exists() else []
     mf.write_text(json.dumps({"bars": _merge([(old, 0), (new, 1)])}))
     rebuild(sym, m, load_registry())
     if m == 1: derive(sym)
-    print(f"added {len(new):,} {label(m)} bars for {sym} from {Path(file).name}")
+    print(f"added {len(new):,} {label(m)} bars for {sym} from {Path(file).name}"
+          + (f" (left out {len(forming)} still forming)" if forming else ""))
 
 
 def status():
