@@ -83,17 +83,48 @@ Outcomes, MAE/MFE, ATR, VWAP and charts need price bars for each instrument you 
 
 ### 1. Set up the chart
 
+> [!IMPORTANT]
+> **Set the chart up before you export.** The export contains only what is on the chart when you export it: the
+> prices, plus a column for each indicator on the chart. An indicator you add later is not in the files you already
+> saved.
+
 Open the instrument at the bar size you want to export, then add these from **Indicators**:
 
 | Add | Why | Needed? |
 |---|---|---|
 | **Volume** | VWAP is calculated from it | **Yes**, for VWAP |
 | **VWAP** (built in, anchor: Session) | Used exactly as the chart shows it | Recommended |
-| **Machine Learning: Lorentzian Classification** (by jdehorty), default settings | Its *Kernel Regression Estimate* line is drawn on the gallery charts | Recommended |
 | **SMA 50, 100, 200, 500, 1000** | Match what you see on your own chart | Optional: the skill calculates them from prices |
+| **EMA** (e.g. 9, 21, 50) | Match what you see on your own chart | Optional: the skill calculates any EMA length from prices |
 | **ATR** (length 14) | Match what you see on your own chart | Optional: the skill calculates ATR on 5m, 15m, 4h and daily itself |
 
-Without VWAP or the Lorentzian script on the chart, the skill calculates both, matching TradingView. VWAP still needs **Volume**.
+Without VWAP on the chart, the skill calculates it from Volume, matching TradingView.
+
+**Indicators your strategy uses.** If your entries depend on an indicator, add it to the chart before exporting so its
+values are in the file. Some examples:
+- **RSI** (e.g. length 14), for overbought / oversold or divergence entries;
+- **MACD**, for momentum or crossover entries;
+- **Stochastic**, for pullback timing;
+- **Bollinger Bands** or **Keltner Channels**, for range or squeeze setups;
+- **Supertrend** or **Ichimoku**, for trend filters;
+- **Anchored VWAP** or **Volume Profile** levels, for confluence.
+
+**Every other indicator column is kept.** Each indicator on the chart becomes a **TV <name>** column in the trade log,
+named after the plot (e.g. **TV RSI**, **TV MACD**). It shows the value on the last candle that closed before the entry,
+so you can filter your trades by it, for example "RSI above 70". There's no limit on the number of indicators, and any
+indicator that plots a number works, including your own Pine scripts.
+
+- **Moving averages are named for you.** TradingView exports a built-in moving average under a plain name ("EMA",
+  "MA") and doesn't let you rename it, so two EMAs export as "EMA" and "EMA (2)". The skill works out each one's length
+  from the prices, so the columns read **TV EMA 9** and **TV EMA 20**.
+- **Other repeated or unclear names** get numbered ("Plot", "Plot (2)"). Give them your own names with
+  `config.py set indicator_names '{"Plot": "RSI 14", "Plot (2)": "RSI signal"}'`.
+- **Signals that only fire on some candles** (buy/sell arrows) are blank on the candles where they didn't fire.
+- **Bar sizes:** values come from your 5-minute and larger exports, taken on the trade's own bar size when you exported
+  it. 1-minute exports are big, so their indicator columns are skipped unless you set
+  `config.py set indicators_1m true`.
+- **Keep the same indicators on the chart** when you export a newer file. Where exports overlap, the newest file's
+  candles replace the older ones, and a candle only keeps the indicators that were on the chart for that export.
 
 ### 2. Load the history you want
 
@@ -110,7 +141,9 @@ need. The bars are already loaded from TradingView's servers, so this takes only
 ### Which bar sizes
 
 - **1-minute** gives the most accurate outcome checks. Export it for the period your trades cover. The skill builds
-  5m, 15m, 30m and 60m bars from it wherever you have no export of those.
+  5m, 15m, 30m, 60m and 4-hour bars from it wherever you have no export of those. The 4-hour bars start at the
+  instrument's session start (its rollover), as TradingView draws them. The first and last bar of a trading day can
+  be shorter than 4 hours: a market that opens at 02:15 or closes at 22:00 gives a short bar there.
 - **5-minute** reaches further back, for longer history, ATR and the charts.
 - **Repeat now and then.** Overlapping exports are merged and the newest file wins, so just add new ones.
 - **Deleting old exports is safe:** bars are kept once read. Run `prices.py ingest --rebuild` to start again from the files present.
@@ -119,7 +152,24 @@ need. The bars are already loaded from TradingView's servers, so this takes only
 
 - `prices.py status` lists what is held for each symbol and bar size.
 - `prices.py export OANDA:EURUSD 1m merged.csv` writes one merged CSV of the stored bars, for opening in Excel.
-- If the TradingView MCP server is connected, Claude can also fill small gaps from it.
+- If the TradingView MCP server is connected, Claude can also fill recent gaps from it (see below).
+
+### Optional: the TradingView MCP server
+
+TradingView's MCP server lets Claude fetch recent price bars directly, so a trade taken today can be checked without
+exporting first.
+
+1. **Connect it:** in claude.ai go to **Settings → Connectors**, add **TradingView** and sign in. In Claude Code, `/mcp`
+   shows whether it's connected.
+2. **Use it:** when a trade shows **Open** or **No price data yet**, ask Claude to "top up the prices from TradingView".
+   Claude fetches the missing bars, adds them to the store and re-checks the trades.
+
+What to expect:
+- **Recent data only:** about a few days of 1-minute bars, so it's for filling gaps, not building history. Exports are
+  still the main source.
+- **Prices and volume only:** the TV indicator columns still come from your exports.
+- **Exports win:** where an export and the MCP overlap, the export's bars are kept.
+- **Without it, nothing breaks:** everything works from exports alone.
 
 ## Use
 
