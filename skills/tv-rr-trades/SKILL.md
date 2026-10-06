@@ -46,6 +46,8 @@ uv run -q --with openpyxl python scripts/extract.py
 ```
 
 Options:
+- `--decision Filtered` / `--decision Missed` covers "add these filtered trades", "add these missed trades" and "update these trades to filtered". It sets **Decision** on every drawing on the clipboard: drawings not in the sheet are added, ones already there are updated. `--decision Taken` clears it (blank = taken). The workbook needs journal columns.
+- `--remove` covers "remove these trades". It deletes the clipboard's drawings from the sheet. **Run it with `--dry-run` first, show the user the list, and remove only after they confirm.** Drawings not in the sheet are listed as such.
 - `--recheck` re-assesses every trade already in the workbook (no clipboard), for example after new price data arrives;
 - `--dry-run` shows what would be logged and writes nothing;
 - `--file clip.html` reads a saved clip instead of the clipboard;
@@ -55,6 +57,12 @@ Options:
 The clipboard is read on macOS (`osascript`), Windows (PowerShell) and Linux (`wl-paste` or `xclip`). TradingView puts drawings in the clipboard's HTML. If nothing is found, ask the user to select the Long/Short Position tools in TradingView, press Cmd-C or Ctrl-C, and try again.
 
 When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown sheet are refreshed automatically after every save.
+
+## TV chart column
+
+**TV chart** (column 5, next to the gallery's **Chart** link) holds the user's own TradingView chart link for each trade.
+They can paste a URL, or a link shown as text. It is kept through every rebuild, even when the drawing is re-copied with
+new levels, and shown as a clickable "TV chart" link. The first six columns, Symbol to Outcome, stay frozen.
 
 ## Journal columns (optional, per workbook)
 
@@ -80,7 +88,7 @@ next to a Backtest file). Without `--from`, the lists start with a few generic e
   - **Filter notes**, **Grade notes**, **General notes:** free text.
   - **Grade:** the user's call. **Rule grade:** an Excel formula.
   - **Auto confluence:** what the script found, with distances. A level the user deleted is never re-added.
-- **Safeguard:** a filter reason with a blank Decision becomes **Filtered** on the next run, unless Grade is F. Excel highlights mismatches live.
+- **Safeguard:** a filter reason with a blank Decision becomes **Filtered** on the next run, unless Grade is F. Excel highlights mismatches live. So `--decision Taken` on a trade that has filter reasons turns back into Filtered: grade it F if it was taken against the rules.
 - **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (taken and missed, i.e. Decision is not Filtered).
 
 Every rebuild keeps both sheets and all journal values, including when the drawing is re-copied with new levels. A

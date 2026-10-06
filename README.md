@@ -178,6 +178,15 @@ What to expect:
 
 Ask for "the breakdown", "which target would have worked better", or "a gallery of my trades".
 
+More things you can ask, with drawings copied from TradingView:
+- **"Add these filtered trades"** or **"Add these missed trades"**: logs them with **Decision** set, adding new ones and
+  updating ones already in the sheet. "Update these trades to filtered" works the same way. Needs the journal
+  columns (below).
+- **"Remove these trades"**: Claude lists what would be removed and asks before deleting.
+
+Each trade also has a **TV chart** column for your own TradingView chart link. Paste a URL, or a link with your own
+text. It's kept whenever the sheet is rebuilt.
+
 ### Optional: a trading journal in the log
 
 Ask Claude to "add journal columns" to a workbook. Each trade then gets these columns:

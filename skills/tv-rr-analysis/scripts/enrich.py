@@ -90,6 +90,11 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
 
 
 TV_PREFIX = "TV "
+NOT_INDICATORS = {"TV chart"}  # the user's TradingView link column (tv-rr-trades), not an exported indicator
+
+
+def is_tv_indicator(h):
+    return str(h).startswith(TV_PREFIX) and h not in NOT_INDICATORS
 
 
 def tv_values(ws, head):
@@ -143,7 +148,7 @@ def enrich(path):
             head.append(c)
     tv = tv_values(ws, head)  # {row: {"TV <name>": value}}
     now = {c for vals in tv.values() for c in vals}
-    for i in sorted((n for n, h in enumerate(head, 1) if str(h).startswith(TV_PREFIX) and h not in now), reverse=True):
+    for i in sorted((n for n, h in enumerate(head, 1) if is_tv_indicator(h) and h not in now), reverse=True):
         ws.delete_cols(i); del head[i - 1]
     for c in sorted({c for vals in tv.values() for c in vals}, key=str.lower):
         if c not in head:
@@ -152,9 +157,9 @@ def enrich(path):
     col = {h: i + 1 for i, h in enumerate(head)}
     for i in range(2, ws.max_row + 1):
         for h in head:
-            if str(h).startswith(TV_PREFIX): ws.cell(i, col[h], tv.get(i, {}).get(h))
+            if is_tv_indicator(h): ws.cell(i, col[h], tv.get(i, {}).get(h))
     for h in head:
-        if str(h).startswith(TV_PREFIX):
+        if is_tv_indicator(h):
             ws.column_dimensions[get_column_letter(col[h])].width = 10; ws.column_dimensions[get_column_letter(col[h])].outline_level = 1
     fill = {"Win": PatternFill("solid", fgColor="C8E6C9"), "Loss": PatternFill("solid", fgColor="FFCDD2"),
             "Open": PatternFill("solid", fgColor="BBDEFB"), "BE": PatternFill("solid", fgColor="FFE0B2")}
