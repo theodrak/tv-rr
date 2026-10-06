@@ -117,6 +117,63 @@ def vwap_at(sym, t, minutes=30):
     return (vw[-1], back, bars[i]["c"]) if vw[-1] is not None else None
 
 
+def sma_at(sym, t, n):
+    """SMA(n) of the base bars' closes (5m when held, as on the charts) at the last bar closed by t, or None."""
+    bars, m = base(sym)
+    if not bars: return None
+    k = ("cum", sym)
+    if k not in _cache:
+        cum = [0.0]
+        for b in bars: cum.append(cum[-1] + b["c"])
+        _cache[k] = ([b["t"] for b in bars], cum)
+    ts, cum = _cache[k]
+    i = bisect.bisect_right(ts, t - m * 60) - 1
+    return (cum[i + 1] - cum[i + 1 - n]) / n if i + 1 >= n else None
+
+
+def _closed_index(sym, t):
+    bars, m = base(sym)
+    if not bars: return None, None, None
+    k = ("ts", sym)
+    if k not in _cache: _cache[k] = [b["t"] for b in bars]
+    return bars, m, bisect.bisect_right(_cache[k], t - m * 60) - 1
+
+
+def ema_at(sym, t, n):
+    """EMA(n) of the base bars' closes at the last bar closed by t (seeded with the first close, like ema()), or None."""
+    bars, m, i = _closed_index(sym, t)
+    if bars is None or i < n: return None
+    k = ("ema", sym, n)
+    if k not in _cache: _cache[k] = ema([b["c"] for b in bars], n)
+    return _cache[k][i]
+
+
+def prior_day_hl(sym, t):
+    """(high, low) of the previous session (from the symbol's session start) before the bar closed by t, or None."""
+    bars, m, i = _closed_index(sym, t)
+    if bars is None or i < 0: return None
+    ts = _cache[("ts", sym)]
+    ds = day_start(sym, bars[i]["t"]); prev = day_start(sym, ds - 1)
+    day = bars[bisect.bisect_left(ts, prev):bisect.bisect_left(ts, ds)]
+    return (max(b["h"] for b in day), min(b["l"] for b in day)) if day else None
+
+
+def vwap_recent(sym, t, minutes=10, steps=2):
+    """VWAP at the last bar closed by t and then every `minutes` before it, `steps` times, all in the same session:
+    [now, `minutes` ago, 2×`minutes` ago, …]. Entries that would fall before the session start are None."""
+    bars, m = base(sym)
+    if not bars: return None
+    k = ("ts", sym)
+    if k not in _cache: _cache[k] = [b["t"] for b in bars]
+    ts = _cache[k]
+    i = bisect.bisect_right(ts, t - m * 60) - 1
+    if i < 0: return None
+    j0 = bisect.bisect_left(ts, day_start(sym, bars[i]["t"]))
+    vw = vwap_series(sym, bars[j0:i + 1])
+    n = max(1, minutes // m)
+    return [vw[i - j0 - s * n] if i - s * n >= j0 else None for s in range(steps + 1)]
+
+
 def kernel_series(bars, h=8, r=8.0, x=25):
     if all("kr" in b for b in bars): return [b["kr"] for b in bars]
     w = [(1 + i * i / (h * h * 2 * r)) ** -r for i in range(x + 2)]

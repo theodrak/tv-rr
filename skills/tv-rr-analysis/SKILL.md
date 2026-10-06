@@ -27,13 +27,16 @@ uv run -q --with openpyxl python scripts/enrich.py [--file WORKBOOK]
 | **1.5R BE at 55% / 1.5R BE at 1R** | The same with a 1.5R target, the stop moving at 55% or at +1R |
 | **ATR 5m / 15m / 4h / D** | ATR(14) of the last closed bar of each timeframe at entry |
 | **ATR 1:1 … 1.5:1.5** | Stop and TP sized from the 5m ATR (stop multiple : TP multiple) |
-| **VWAP, VWAP dist, VWAP side, VWAP in the way, VWAP behind, VWAP slope** | Session VWAP at entry: its value, the entry's distance (+ = beyond it your way), the side price closed on, whether it sits between entry and TP or between stop and entry, and its 30-minute slope |
+| **VWAP, VWAP dist, VWAP side, VWAP in the way, VWAP behind** | Session VWAP at entry: its value, the entry's distance (+ = beyond it your way), the side price closed on, and whether it sits between entry and TP or between stop and entry |
+| **VWAP 30m change** | With / Against: VWAP higher or lower than 30 minutes earlier. Not a slope: on an open-type setup it often reaches back before the open's spike. (Called "VWAP slope" before.) |
+| **VWAP direction** | The line at entry over the last 10 minutes: **Flat** (moved < 2 pts), **Upwards / Downwards**, or **Upwards turning / Downwards turning** when it still moves that way at under half the pace of the 10 minutes before (flattening out) |
+| **VWAP immediate slope** | That 10-minute slope against the trade: **With / Against / Flat** |
 
 - **Blank** means not filled, no price data, or a value that can't be known. For example, VWAP needs a Volume or VWAP column in the exports.
 - **Open** means neither level has been reached yet.
 - **MAE and MFE are blank** when one candle reached both levels.
 
-**Breakdown sheet:** each variant for all trades, longs, shorts and (when the log mixes instruments) each symbol:
+**Breakdown sheet:** each variant for all trades, longs, shorts and (when the log mixes instruments) each symbol. With journal columns (tv-rr-trades `journal.py`), the table appears twice: **All trades**, then **Unfiltered trades** (Decision is not Filtered). For each:
 - trades, wins, losses, open, break-even, win %;
 - net points and net R;
 - average MAE and MFE for winners and losers.

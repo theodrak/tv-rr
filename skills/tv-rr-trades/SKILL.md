@@ -56,6 +56,37 @@ The clipboard is read on macOS (`osascript`), Windows (PowerShell) and Linux (`w
 
 When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown sheet are refreshed automatically after every save.
 
+## Journal columns (optional, per workbook)
+
+```
+uv run -q --with openpyxl python scripts/journal.py init WORKBOOK [--from OTHER_WORKBOOK] [--distance 10 --unit pts|pips]
+uv run -q --with openpyxl python scripts/extract.py --recheck --out WORKBOOK
+```
+
+This adds two sheets and a group of columns after **Last copied**. Only workbooks with a Lists sheet get them.
+
+**Before running `init`, ask the user** what they filter on and which levels they count as confluence, since every setup
+differs. Use `--from` to copy the lists from a workbook they already use for the same setup (for example a Replay file
+next to a Backtest file). Without `--from`, the lists start with a few generic examples to replace.
+
+- **Lists sheet:** the dropdown choices. Column A is filter reasons, B is grade reasons (each starts with `+` or `-`), C is confluences. The user edits them in Excel. Column E is a guide the script rewrites.
+- **Auto confluence sheet:** controls which levels are filled in automatically.
+  - **Distance** and **Unit**: `pts` means price units; `pips` means 10 ticks, as on 5-decimal FX quotes. Ask the user for both, in their own terms. Never use ATR, because a moving yardstick can't be read back.
+  - **Level rows:** VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low, each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list.
+  - **A blank Distance** switches auto-fill off.
+- **Columns:**
+  - **Decision:** blank means taken; otherwise Filtered or Missed.
+  - **Filter 1–3**, **Confluence 1–3**, **Grade reason 1–3:** dropdowns.
+  - **Filter notes**, **Grade notes**, **General notes:** free text.
+  - **Grade:** the user's call. **Rule grade:** an Excel formula.
+  - **Auto confluence:** what the script found, with distances. A level the user deleted is never re-added.
+- **Safeguard:** a filter reason with a blank Decision becomes **Filtered** on the next run, unless Grade is F. Excel highlights mismatches live.
+- **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (taken and missed, i.e. Decision is not Filtered).
+
+Every rebuild keeps both sheets and all journal values, including when the drawing is re-copied with new levels. A
+journal made before the Auto confluence sheet existed gets one that keeps its old behaviour: VWAP and the 50/100/200 SMA
+within 10 pts.
+
 ## Price data
 
 Outcomes are checked on stored bars: 1-minute wherever they cover a trade, otherwise the finest bars held.
