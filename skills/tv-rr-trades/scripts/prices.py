@@ -3,7 +3,8 @@
 usage: prices.py ingest [--rebuild]          read every export in the configured folders (only changed files cost time)
        prices.py status                      what data is held, per symbol and bar size
        prices.py add SYMBOL INTERVAL FILE    merge bars saved from the TradingView MCP (any usual JSON shape: mcp_bars)
-       prices.py export SYMBOL INTERVAL OUT.csv   write one merged CSV of the stored bars (e.g. 1m, 5m)
+       prices.py export SYMBOL INTERVAL OUT.csv [--no-built]   one CSV of the stored bars and indicator columns
+       prices.py snapshot OUT.db             a clean single-file copy of the database, e.g. to share
 
 Exports: in TradingView, open the chart, then "Export chart data…" (CSV). The file name TradingView gives it
 ("OANDA_DE30EUR, 5.csv", "BINANCE_BTCUSDT, 1 (2).csv") names the symbol; the bar size is read from the data. Any extra
@@ -53,11 +54,12 @@ def _parse_time(s):
 
 
 def _columns(header, lower=True):
-    """Column names, made unique: a second "EMA" becomes "EMA (2)"."""
+    """Column names, made unique: a second "EMA" becomes "EMA (2)". With lower=False the names keep their case and
+    only an exact repeat counts, so a plot called "LOW" (prior week low) stays "LOW" beside the price column "low"."""
     seen, out = {}, []
     for c in header:
-        k = c.strip().lower() if lower else c.strip(); key = k.lower(); seen[key] = seen.get(key, 0) + 1
-        out.append(k if seen[key] == 1 else f"{k} ({seen[key]})")
+        k = c.strip().lower() if lower else c.strip(); seen[k] = seen.get(k, 0) + 1
+        out.append(k if seen[k] == 1 else f"{k} ({seen[k]})")
     return out
 
 
@@ -76,7 +78,10 @@ def read_export(p, indicators=False):
     with open(p, newline="") as fh:
         r = csv.reader(fh); raw = next(r); head = _columns(raw); names = _columns(raw, lower=False); rows = [x for x in r if x]
     ix = {k: i for i, k in enumerate(head)}
-    ind_cols = [(i, names[i]) for i, k in enumerate(head) if k not in BASE_COLS and k.split(" (")[0] not in BASE_COLS]
+    # the price columns are the first time/open/high/low/close (and volume, VWAP, kernel); everything else, including a
+    # later "LOW" or "High" plot, is an indicator
+    base = {ix[k] for k in BASE_COLS if k in ix}
+    ind_cols = [(i, names[i]) for i in range(len(head)) if i not in base]
     ind_rows = []
     if not all(k in ix for k in ("time", "open", "high", "low", "close")): return None, None
     bars = []
@@ -194,13 +199,19 @@ def put_bars(sym, m, bars, rank, src, keep_last=False):
     if keep_last and rows:
         db().execute("insert or ignore into bars values (?,?,?,?,?,?,?,?,?,?,?,?)", rows.pop())
     db().executemany(q, rows)
-    _cache.pop((sym, m), None); _cache.pop(("ranges", sym), None)
+    for k in ((sym, m), (sym, m, "no built"), ("ranges", sym)): _cache.pop(k, None)
 
 
-def put_indicators(sym, m, rows, rank):
+def put_indicators(sym, m, rows, rank, keep_last=False):
+    """Upsert indicator values (same ranks as bars). keep_last: the last row never replaces stored values (an
+    export's last bar may still have been forming)."""
     q = ("insert into indicators values (?,?,?,?) on conflict (series, t) do update set value=excluded.value, "
          "rank=excluded.rank where excluded.rank >= indicators.rank")
     rank = int(rank)
+    if keep_last and rows:
+        last = rows[-1]; rows = rows[:-1]
+        db().executemany("insert or ignore into indicators values (?,?,?,?)",
+                         [(series_id(sym, m, k), last["t"], v, rank) for k, v in last.items() if k != "t"])
     db().executemany(q, ((series_id(sym, m, k), r["t"], v, rank) for r in rows for k, v in r.items() if k != "t"))
     _cache.pop(("ind", sym, m), None)
 
@@ -252,7 +263,7 @@ def ingest(verbose=True, fresh=False):
             if verbose: print(f"skipped {p.name}: not a TradingView export (no symbol in the name or no time column)")
             continue
         put_bars(sym, m, bars, sig[0], "export", keep_last=True)
-        if ind and (m >= 5 or config.load().get("indicators_1m")): put_indicators(sym, m, ind, sig[0])
+        if ind and (m >= 5 or config.load().get("indicators_1m")): put_indicators(sym, m, ind, sig[0], keep_last=True)
         con.execute("insert or replace into exports values (?,?,?,?,?)", (str(p), sig[0], sig[1], sym, m))
         first = changed.get((sym, m)); changed[(sym, m)] = min(first, bars[0]["t"]) if first else bars[0]["t"]
         if verbose: print(f"read {p.name}: {sym} {label(m)}, {len(bars):,} bars")
@@ -314,21 +325,39 @@ def derive(sym, verbose=True, since=None):
     db().commit()
 
 
-def export_csv(sym, interval, out):
-    m = int(re.sub(r"\D", "", interval) or 0)
-    bars = load(sym, m)
+def export_csv(sym, interval, out, built=True):
+    """One CSV of the stored bars: UTC and local time, OHLC, volume, VWAP, kernel line, then every stored indicator
+    column (in the order they were first exported), then where each bar came from."""
+    m = int(re.sub(r"\D", "", interval) or 0) * (60 if interval.lower().endswith("h") else 1)
+    bars = load(sym, m, built)
     if not bars: sys.exit(f"no {interval} bars stored for {sym} (prices.py status lists what is held)")
     tz = config.tz(); cols = [c for c in ("v", "vwap", "kr") if any(c in b for b in bars)]
     names = {"v": "volume", "vwap": "vwap", "kr": "kernel regression estimate"}
+    ind = [r[0] for r in db().execute("select name from series where sid=? and tf=? order by id", (sid(sym), m))]
+    vals = {r["t"]: r for r in indicator_rows(sym, m)} if ind else {}
+    src = {t: s_ for t, s_ in db().execute("select t, src from bars where sid=? and tf=?", (sid(sym), m))}
     out = Path(out).expanduser(); out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["time_utc", f"time_{config.tz_name()}", "open", "high", "low", "close"] + [names[c] for c in cols] + ["source"])
+        w.writerow(["time_utc", f"time_{config.tz_name()}", "open", "high", "low", "close"] + [names[c] for c in cols]
+                   + ind + ["source"])
         for b in bars:
-            u = dt.datetime.fromtimestamp(b["t"], dt.timezone.utc)
+            u = dt.datetime.fromtimestamp(b["t"], dt.timezone.utc); v = vals.get(b["t"], {})
             w.writerow([u.strftime("%Y-%m-%d %H:%M"), u.astimezone(tz).strftime("%Y-%m-%d %H:%M"), b["o"], b["h"], b["l"], b["c"]]
-                       + [b.get(c, "") for c in cols] + [f"built from {b['from']}" if b.get("from") else "export or MCP"])
-    print(f"wrote {len(bars):,} {interval} bars for {sym} → {out}")
+                       + [b.get(c, "") for c in cols] + [v.get(n, "") for n in ind]
+                       + [{0: "export", 1: "mcp", 2: "built from 1m"}[src[b["t"]]]])
+    print(f"wrote {len(bars):,} {interval} bars for {sym}, {len(ind)} indicator columns → {out}")
+
+
+def snapshot(out):
+    """A clean single-file copy of the database to hand to someone (VACUUM INTO: consistent even while in WAL mode,
+    with nothing left in -wal / -shm side files)."""
+    out = Path(out).expanduser().resolve()
+    if out.exists(): sys.exit(f"{out} already exists: choose another name or delete it first")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    db().execute("vacuum into ?", (str(out),))
+    print(f"snapshot: {out} ({out.stat().st_size / 1e6:,.0f} MB). Open it in any SQLite tool; the views prices and "
+          "indicator_values show symbols, plot names and UTC times.")
 
 
 def ranges(sym):
@@ -351,14 +380,15 @@ def since(bars, t, after=False):
     return bars[(bisect.bisect_right if after else bisect.bisect_left)(ts, t):]
 
 
-def load(sym, m):
+def load(sym, m, built=True):
     """Every bar held for this symbol and size, oldest first, as {t, o, h, l, c, v?, vwap?, kr?, from?} (from = "1m"
-    for built bars); None when there are none."""
-    k = (sym, m)
+    for built bars); None when there are none. built=False leaves out the bars built from 1m (exports and MCP only)."""
+    k = (sym, m) if built else (sym, m, "no built")
     if k not in _cache:
         out = []
         for t, o, h, l, c, v, vw, kr, src in db().execute(
-                "select t, o, h, l, c, v, vwap, kr, src from bars where sid=? and tf=? order by t", (sid(sym), m)):
+                "select t, o, h, l, c, v, vwap, kr, src from bars where sid=? and tf=? and src <= ? order by t",
+                (sid(sym), m, 2 if built else 1)):
             b = {"t": t, "o": o, "h": h, "l": l, "c": c}
             if v is not None: b["v"] = v
             if vw is not None: b["vwap"] = vw
@@ -477,5 +507,6 @@ if __name__ == "__main__":
         if not ingest(fresh="--rebuild" in a): print("no new or changed exports")
     elif a[:1] == ["status"]: status()
     elif a[:1] == ["add"] and len(a) == 4: add(a[1], a[2], a[3])
-    elif a[:1] == ["export"] and len(a) == 4: export_csv(a[1], a[2], a[3])
+    elif a[:1] == ["export"] and len(a) in (4, 5): export_csv(a[1], a[2], a[3], built="--no-built" not in a)
+    elif a[:1] == ["snapshot"] and len(a) == 2: snapshot(a[1])
     else: sys.exit(__doc__)

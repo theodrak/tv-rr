@@ -122,6 +122,8 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
   - **5m to 60m** are on the clock.
   - **4h** starts at the symbol's **session start** (the rollover), as TradingView builds it. The day's first and last 4h bar only cover the trading inside them; for example, DE30 opening at 02:15 Berlin gives a 45-minute first bar. A 4h bar never crosses into the next trading day.
 - **`prices.py status`** lists what is held.
+- **`prices.py export SYMBOL 5m OUT.csv [--no-built]`** writes the bars with every indicator column. **`prices.py snapshot OUT.db`** writes a clean single-file copy of the database (VACUUM INTO) for sharing; never hand over the live `prices.db`, because in WAL mode its latest writes may sit in `-wal`.
+- **Other skills share this store.** de30-open-review reads its 5m bars and indicator columns from it (`prices.load(sym, 5, built=False)`, `indicator_rows`) and loads exports and MCP files into it.
 - **`prices.py export SYMBOL 1m out.csv`** writes one merged CSV.
 - **TradingView MCP top-up:** see the next section.
 

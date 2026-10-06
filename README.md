@@ -167,7 +167,10 @@ Google Drive, Dropbox or OneDrive (the skill refuses a synced folder). An older 
 first time.
 
 - `prices.py status` lists what is held for each symbol and bar size.
-- `prices.py export OANDA:EURUSD 1m merged.csv` writes one merged CSV of the stored bars, for opening in Excel.
+- `prices.py export OANDA:EURUSD 5m merged.csv` writes one CSV of the stored bars with volume, VWAP and every
+  indicator column, for Excel, pandas or anyone you share it with. Add `--no-built` to leave out bars built from 1m.
+- `prices.py snapshot share.db` writes a clean single-file copy of the database to hand to someone. Don't copy
+  `prices.db` itself: in WAL mode its latest changes can sit in the `-wal` file beside it.
 - If the TradingView MCP server is connected, Claude can also fill recent gaps from it (see below).
 
 ### Optional: the TradingView MCP server
