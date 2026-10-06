@@ -46,6 +46,8 @@ uv run -q --with openpyxl python scripts/extract.py
 ```
 
 Options:
+- `--decision Filtered` / `--decision Missed` covers "add these filtered trades", "add these missed trades" and "update these trades to filtered". It sets **Decision** on every drawing on the clipboard: drawings not in the sheet are added, ones already there are updated. Without `--decision`, new trades are **Taken**; `--decision Taken` sets it back ("mark these as taken"). The workbook needs journal columns.
+- `--remove` covers "remove these trades". It deletes the clipboard's drawings from the sheet. **Run it with `--dry-run` first, show the user the list, and remove only after they confirm.** Drawings not in the sheet are listed as such.
 - `--recheck` re-assesses every trade already in the workbook (no clipboard), for example after new price data arrives;
 - `--dry-run` shows what would be logged and writes nothing;
 - `--file clip.html` reads a saved clip instead of the clipboard;
@@ -55,6 +57,12 @@ Options:
 The clipboard is read on macOS (`osascript`), Windows (PowerShell) and Linux (`wl-paste` or `xclip`). TradingView puts drawings in the clipboard's HTML. If nothing is found, ask the user to select the Long/Short Position tools in TradingView, press Cmd-C or Ctrl-C, and try again.
 
 When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown sheet are refreshed automatically after every save.
+
+## TV chart column
+
+**TV chart** (column 5, next to the gallery's **Chart** link) holds the user's own TradingView chart link for each trade.
+They can paste a URL, or a link shown as text. It is kept through every rebuild, even when the drawing is re-copied with
+new levels, and shown as a clickable "TV chart" link. The first six columns, Symbol to Outcome, stay frozen.
 
 ## Journal columns (optional, per workbook)
 
@@ -75,13 +83,13 @@ next to a Backtest file). Without `--from`, the lists start with a few generic e
   - **Level rows:** VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low, each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list.
   - **A blank Distance** switches auto-fill off.
 - **Columns:**
-  - **Decision:** blank means taken; otherwise Filtered or Missed.
+  - **Decision:** **Taken** by default for every trade added, or Filtered or Missed. Taken with filter reasons means the user took it because something outweighed them, noted in Filter notes.
   - **Filter 1–3**, **Confluence 1–3**, **Grade reason 1–3:** dropdowns.
   - **Filter notes**, **Grade notes**, **General notes:** free text.
   - **Grade:** the user's call. **Rule grade:** an Excel formula.
   - **Auto confluence:** what the script found, with distances. A level the user deleted is never re-added.
-- **Safeguard:** a filter reason with a blank Decision becomes **Filtered** on the next run, unless Grade is F. Excel highlights mismatches live.
-- **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (taken and missed, i.e. Decision is not Filtered).
+- **Safeguard:** Excel turns Decision orange when it doesn't add up: Filtered with no filter reason, Missed with one, or Taken with filter reasons but no Filter notes saying why. Nothing is changed automatically. Rule grade never gives F; that's the user's call. In the Breakdown, Taken and Missed count as unfiltered.
+- **Breakdown:** gets two sections: **All trades**, and **Unfiltered trades** (Taken and Missed, i.e. Decision is not Filtered).
 
 Every rebuild keeps both sheets and all journal values, including when the drawing is re-copied with new levels. A
 journal made before the Auto confluence sheet existed gets one that keeps its old behaviour: VWAP and the 50/100/200 SMA
@@ -104,12 +112,18 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
 
 **Ingesting:**
 - **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
-  - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present.
-  - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in `<size>m.indicators.json` beside the bars. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up.
+  - **Where it's stored:** one SQLite database, `<TV_RR_HOME>/data/prices.db`, in WAL mode. It has tables `bars`, `indicators`, `series`, `symbols` and `exports`, plus the readable views `prices` and `indicator_values`. The `prices.py` docstring explains the source ranks.
+    - Only new or changed export files are read. Their rows are upserted, and exports outrank MCP bars, which outrank bars built from 1m.
+    - It must be on a local disk: it refuses synced folders. An old JSON store is moved in automatically the first time.
+    - For one-off questions, query it directly with `sqlite3`.
+  - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present (MCP top-ups are kept).
+  - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in the database's `indicators` table. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up. They stay in the store; the trade log only gets **TV <name>** columns with `config.py set indicator_columns true`. To answer a question about an indicator ("my win rate when RSI > 70"), read it per trade with `prices.indicators_at(symbol, entry_utc_seconds, 5)`.
 - **Builds 5m, 15m, 30m, 60m and 4h bars from 1m** wherever no export of that size exists; an exported bar always wins.
   - **5m to 60m** are on the clock.
   - **4h** starts at the symbol's **session start** (the rollover), as TradingView builds it. The day's first and last 4h bar only cover the trading inside them; for example, DE30 opening at 02:15 Berlin gives a 45-minute first bar. A 4h bar never crosses into the next trading day.
 - **`prices.py status`** lists what is held.
+- **`prices.py export SYMBOL 5m OUT.csv [--no-built]`** writes the bars with every indicator column. **`prices.py snapshot OUT.db`** writes a clean single-file copy of the database (VACUUM INTO) for sharing; never hand over the live `prices.db`, because in WAL mode its latest writes may sit in `-wal`.
+- **Other skills share this store.** de30-open-review reads its 5m bars and indicator columns from it (`prices.load(sym, 5, built=False)`, `indicator_rows`) and loads exports and MCP files into it.
 - **`prices.py export SYMBOL 1m out.csv`** writes one merged CSV.
 - **TradingView MCP top-up:** see the next section.
 
@@ -140,7 +154,7 @@ The claude.ai **TradingView** connector can fill recent gaps without an export. 
 - The connector's 4h bars match the ones built from 1m exactly; checked on 38 DE30 bars on 6 Oct 2026, including the short first and last bar of the day.
 - MCP bars are prices and volume only, with no indicator columns, so the TV columns still come from exports.
 - Where an export and MCP bars overlap, the export wins.
-- MCP bars live in `mcp_<size>.json` beside the exports' bars and survive `ingest --rebuild`.
+- MCP bars are stored with source "mcp", rank below exports, and survive `ingest --rebuild`.
 
 ## Rules the script relies on (don't "simplify" them)
 

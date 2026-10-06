@@ -1,6 +1,12 @@
 """Extract TradingView Long/Short Position (risk/reward) drawings from the clipboard into an Excel trade log.
 
 usage: extract.py [--file CLIP.html] [--tick 0.1] [--out PATH] [--dry-run] [--recheck]
+                  [--decision Filtered|Missed|Taken] [--remove]
+
+--decision sets the journal's Decision on every drawing on the clipboard: drawings not in the sheet are added, ones
+already there are updated ("add these filtered trades", "update these trades to missed", "mark these as taken").
+Without it, new trades are Taken. The workbook needs journal columns (journal.py init).
+--remove deletes the clipboard's drawings from the sheet ("remove these trades"); with --dry-run it only lists them.
 
 TradingView copies drawings as HTML: one <span data-tradingview-clip="…"> whose JSON holds a `sources` list, one per
 drawing. For LineToolRiskRewardLong / LineToolRiskRewardShort:
@@ -21,7 +27,7 @@ from prices import bars_for  # noqa: E402,F401  (re-exported for the analysis sk
 TZ, UTC = config.tz(), dt.timezone.utc
 ANALYSIS = Path(__file__).resolve().parents[2] / "tv-rr-analysis" / "scripts"
 RR_TYPES = {"LineToolRiskRewardLong": "Long", "LineToolRiskRewardShort": "Short"}
-COLS = ["Symbol", "Direction", "Entry time", "Chart", "Outcome", "Timeframe", "Entry", "Stop", "TP planned", "Risk pts",
+COLS = ["Symbol", "Direction", "Entry time", "Chart", "TV chart", "Outcome", "Timeframe", "Entry", "Stop", "TP planned", "Risk pts",
         "Reward pts", "Planned R:R", "Status", "Fill time", "Exit time", "Exit price", "Result pts", "Result R",
         "Check", "Confirmed outcome", "Note",
         "TradingView says", "TradingView exit", "Checked on", "Checked to", "Drawing id", "Entry (UTC)", "Last copied"]
@@ -29,6 +35,8 @@ COLS = ["Symbol", "Direction", "Entry time", "Chart", "Outcome", "Timeframe", "E
 TIME_COLS = ("Entry time", "Fill time", "Exit time", "TradingView exit", "Checked to")
 # Filled in by the user in Excel; the script never overwrites them
 USER_COLS = ("Confirmed outcome",)
+# Filled in by the user and kept whatever happens to the drawing (a TradingView chart link: a URL, or a link with text)
+KEEP_COLS = ("TV chart",)
 CONFIRM_CHOICES = ["TP", "Stop", "Not filled", "Open"]
 
 
@@ -129,7 +137,7 @@ def simulate(bars, t0, long_, e, sl, tp):
     the path reaches first. Returns (status, outcome, fill_bar, exit_bar, exit_price, inferred) — inferred is True when
     the call depended on the order inside one candle (fill and exit in the same candle, or both levels in one)."""
     filled, fill_b = False, None
-    for b in (x for x in bars if x["t"] >= t0):
+    for b in prices.since(bars, t0):
         p = candle_path(b); start = 0
         if not filled:
             for k in range(3):
@@ -155,7 +163,7 @@ def certain(bars, fill_b, sl, tp, outcome):
     (28 Jul 2026: entry and TP in one candle, no stop; the next candle reached the TP)."""
     in_fill = [n for n, lv in (("Stop", sl), ("TP", tp)) if fill_b["l"] <= lv <= fill_b["h"]]
     if len(in_fill) != 1 or in_fill[0] != outcome: return False
-    for b in (x for x in bars if x["t"] > fill_b["t"]):
+    for b in prices.since(bars, fill_b["t"], after=True):
         s_, t_ = b["l"] <= sl <= b["h"], b["l"] <= tp <= b["h"]
         if s_ and t_: return False
         if s_ or t_: return ("Stop" if s_ else "TP") == outcome
@@ -173,6 +181,8 @@ def check_with_prices(r):
     r["Checked on"] = tf
     if not bars or r.get("Stop") is None or r.get("TP planned") is None:
         if tv not in (None, "Not closed"): r.update({"Status": "Closed", "Outcome": tv, "Note": "exit from TradingView"})
+        elif not bars: r.update({"Status": "No price data yet", "Note": "no price data covers this date: export bars for it "
+                                 "(prices.py status lists what is held), or set Confirmed outcome"})
         return r
     long_ = r["Direction"] == "Long"; e, sl, tp = r["Entry"], r["Stop"], r["TP planned"]
     last = local(bars[-1]["t"])
@@ -231,6 +241,7 @@ def apply_confirmation(r):
     elif "in the fill candle; re-checked" in note: reasons.append("TradingView's exit was in the candle the order filled in")
     elif "re-checked on 5m prices" in note: reasons.append("TradingView's exit was in the entry candle")
     elif "TradingView shows no exit" in note: reasons.append("TradingView shows no exit")
+    elif "no price data covers this date" in note: reasons.append("no price data for this date")
     m = re.search(r"order inside one (\d+m) candle", note)
     if m and m.group(1) != "1m": reasons.append(f"decided inside one {m.group(1)} candle")
     if tv in ("TP", "Stop") and out in ("TP", "Stop", "Both in one candle") and out != tv: reasons.append(f"TradingView says {tv}")
@@ -259,7 +270,14 @@ def load(path):
     if not path.exists(): return []
     ws = load_workbook(path)["Trades"]; rows = list(ws.iter_rows(values_only=True))
     head = [legacy_name(h) for h in rows[0]]
-    out = [d for d in (dict(zip(head, r)) for r in rows[1:]) if d.get("Symbol")]  # a row is a trade only with a symbol
+    out = []
+    for n, r in enumerate(rows[1:], 2):
+        d = dict(zip(head, r))
+        if not d.get("Symbol"): continue  # a row is a trade only with a symbol
+        for c in KEEP_COLS:  # a link's target, when the cell shows text over it
+            link = ws.cell(n, head.index(c) + 1).hyperlink if c in head else None
+            if link is not None and link.target: d[c] = link.target
+        out.append(d)
     # times copied from TradingView are stored as local times: move them if the timezone setting has changed
     note = ws.cell(1, head.index("Entry time") + 1).comment if "Entry time" in head else None
     m = re.search(r"shown in (\S+)\.", note.text) if note else None
@@ -292,7 +310,7 @@ def save(path, rows):
     wb = Workbook(); ws = wb.active; ws.title = "Trades"
     ws.append(COLS)
     for c in ws[1]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
-    ws.freeze_panes = "F2"  # header row and Symbol, Direction, Entry time, Chart, Outcome stay in view
+    ws.freeze_panes = "G2"  # header row and Symbol, Direction, Entry time, Chart, TV chart, Outcome stay in view
     from openpyxl.comments import Comment
     ws.cell(1, COLS.index("Entry time") + 1).comment = Comment(f"Local times are shown in {config.tz_name()}.", "tv-rr")
     from openpyxl.worksheet.datavalidation import DataValidation
@@ -309,6 +327,9 @@ def save(path, rows):
             ws.cell(i, COLS.index(c) + 1).number_format = "ddd dd mmm yyyy hh:mm"
         for c in ("Entry", "Stop", "TP planned", "Exit price"):
             ws.cell(i, COLS.index(c) + 1).number_format = "#,##0.0#####"
+        tc = ws.cell(i, COLS.index("TV chart") + 1)
+        if str(r.get("TV chart") or "").startswith(("http://", "https://")):
+            tc.value = "TV chart"; tc.hyperlink = r["TV chart"]; tc.font = Font(color="0563C1", underline="single")
         o = ws.cell(i, COLS.index("Outcome") + 1)
         if r.get("Outcome") in fills: o.fill = PatternFill("solid", fgColor=fills[r["Outcome"]])
         cc = ws.cell(i, COLS.index("Confirmed outcome") + 1); dv.add(cc)
@@ -318,7 +339,7 @@ def save(path, rows):
         elif r.get("Check"): ck.font = Font(color="2E7D32")
     widths = {"Symbol": 16, "Timeframe": 10, "Direction": 10, **{c: 22 for c in TIME_COLS}, "Entry (UTC)": 22, "Last copied": 22,
               "Outcome": 16, "Status": 16, "TradingView says": 14,
-              "Note": 60, "Drawing id": 12, "Chart": 11, "Check": 44, "Confirmed outcome": 16}
+              "Note": 60, "Drawing id": 12, "Chart": 11, "TV chart": 11, "Check": 44, "Confirmed outcome": 16}
     for i, c in enumerate(COLS, 1): ws.column_dimensions[get_column_letter(i)].width = widths.get(c, 12)
     if lists is not None:
         journal.style(ws, COLS, len(rows)); journal.write_lists(wb, lists)
@@ -342,8 +363,13 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("--file"); ap.add_argument("--tick", type=float)
     ap.add_argument("--out"); ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--recheck", action="store_true", help="re-assess the trades already in the workbook; no clipboard")
+    ap.add_argument("--decision", choices=["Filtered", "Missed", "Taken"], help="set Decision on the copied drawings")
+    ap.add_argument("--remove", action="store_true", help="delete the copied drawings from the sheet")
     a = ap.parse_args()
     path = config.workbook(a.out)
+    if a.decision and not journal.enabled(path):
+        sys.exit(f"{path.name} has no journal columns, so there is no Decision to set. Add them first: "
+                 f"journal.py init \"{path}\", then run again.")
     if config.load()["exports_dirs"]: prices.ingest(verbose=False)
     text = "" if a.recheck else Path(a.file).read_text() if a.file else read_clipboard()
     found, skipped = drawings(text)
@@ -357,14 +383,29 @@ if __name__ == "__main__":
         if lt and not config.symbol(r["Symbol"])["tick"]: learned[r["Symbol"]] = lt
         if w: warns.append(w)
     old = {key(r): r for r in load(path)}
+    has_journal = journal.enabled(path)
+    if a.remove:
+        gone = [old.pop(key(r)) for r in new if key(r) in old]; missing = [r for r in new if key(r) not in {key(g) for g in gone}]
+        print(f"{len(found)} drawings on the clipboard: {len(gone)} in {path.name}"
+              + (", nothing to remove" if not gone else " — dry run, nothing removed" if a.dry_run else ", removed"))
+        for r in sorted(gone, key=lambda r: r["Entry (UTC)"]): print("  - " + fmt(r))
+        for r in missing: print(f"  not in the sheet: {r['Direction']} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}")
+        if gone and not a.dry_run:
+            save(path, sorted(old.values(), key=lambda r: r["Entry (UTC)"]))
+            if (ANALYSIS / "enrich.py").exists():
+                sys.path.insert(0, str(ANALYSIS)); from enrich import enrich
+                enrich(path)
+            print(f"saved: {path} ({len(old)} trades)")
+        sys.exit(0)
     added = sum(1 for r in new if key(r) not in old); updated = len(new) - added
     for r in new:
         prev = old.get(key(r))
         if prev:
             same = all(prev.get(c) == r.get(c) for c in ("Entry", "Stop", "TP planned"))
             for c in USER_COLS: r[c] = prev.get(c) if same else None
-            for c in journal.KEEP: r[c] = prev.get(c)  # your notes stay even when the levels move
+            for c in journal.KEEP + list(KEEP_COLS): r[c] = prev.get(c)  # your notes and links stay even when the levels move
             if not same and prev.get("Confirmed outcome"): r["Note"] = "levels changed since you confirmed it — confirm again"
+        if a.decision: r["Decision"] = a.decision
         old[key(r)] = r
     rows = sorted(old.values(), key=lambda r: r["Entry (UTC)"])
     for r in rows:
@@ -372,11 +413,12 @@ if __name__ == "__main__":
         if r["TradingView exit"] is None and r["TradingView says"] not in (None, "Not closed"):
             r["TradingView exit"] = r.get("Exit time")  # rows written before this column existed
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
-        check_with_prices(r); apply_confirmation(r); journal.autofill_decision(r)
+        check_with_prices(r); apply_confirmation(r)
+        if has_journal: journal.autofill_decision(r)
     print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
           + (" — dry run, nothing written" if a.dry_run else ""))
     print("updated from the clipboard:")
-    for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r))
+    for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r) + (f"  → {a.decision}" if a.decision else ""))
     todo = [r for r in rows if str(r.get("Check") or "").startswith("CONFIRM")]
     if todo:
         print(f"{len(todo)} to confirm in Excel (set 'Confirmed outcome'):")

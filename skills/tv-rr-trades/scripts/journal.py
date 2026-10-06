@@ -13,24 +13,25 @@ has a "Lists" sheet, so other logs are untouched.
                    the Confluence list. No distance = no auto-fill. Copied too with --from.
 extract.py keeps both sheets and every journal value on each rebuild.
 
-Columns (blank Decision = Taken):
-  Decision            Filtered / Missed
+Columns:
+  Decision            Taken (the default for every trade added), Filtered or Missed. Taken with filter reasons = taken
+                      because something outweighed them (say what in Filter notes)
   Filter 1-3          dropdown from Lists!A
   Filter notes        free text
   Confluence 1-3      dropdown from Lists!C; auto levels are added to empty slots
   Auto confluence     what the script found (name and distance); a level the user deleted from the slots is not re-added
   Grade               A+ / A / B / C / D / F, the user's call
-  Rule grade          formula: F = taken despite a filter reason; C = 2+ "-" grade reasons; B = one "-";
+  Rule grade          formula: C = 2+ "-" grade reasons; B = one "-";
                       A+ = no "-" and 2+ pluses ("+" grade reasons and confluences); else A
   Grade reason 1-3    dropdown from Lists!B; items start with "+" or "-"
   Grade notes, General notes   free text
-Safeguards: a filter reason with a blank Decision becomes Filtered on the next run, unless Grade is F (taken against
-the rules); mismatches are highlighted live in Excel.
+Safeguard (live in Excel, nothing is changed for the user): Decision turns orange when it doesn't add up: Filtered with
+no filter reason, Missed with one, or Taken with filter reasons and no Filter notes saying why.
 """
 import sys
 from pathlib import Path
 
-DECISIONS = ["Filtered", "Missed"]
+DECISIONS = ["Filtered", "Missed", "Taken"]
 GRADES = ["A+", "A", "B", "C", "D", "F"]
 FILTERS = ["Filter 1", "Filter 2", "Filter 3"]
 CONFS = ["Confluence 1", "Confluence 2", "Confluence 3"]
@@ -55,21 +56,20 @@ GUIDE = [
     "How to use",
     "Add a row to any list and it appears in that column's dropdowns (keep each list without gaps).",
     "Grade reasons must start with + (better trade) or - (weaker trade).",
-    "Decision: leave blank when you took the trade. Filtered = a rule said no. Missed = should have taken it.",
+    "Decision: every trade starts as Taken. Change it to Filtered (a rule said no) or Missed (should have taken it). Taken with filter reasons = you took it because something outweighed them: say what in Filter notes.",
     "Confluence = a level close to the entry, at or behind it (a level between entry and target is in the way, not a confluence).",
     "The Auto confluence sheet sets how close counts and which levels are filled in for you; delete one from a trade and it stays deleted.",
     "Grade before you know the result.",
     "",
     "Rule grade (worked out from your entries)",
-    "F  = taken despite a filter reason",
     "C  = two or more - reasons",
     "B  = one - reason",
     "A+ = no - reasons and 2+ pluses (+ reasons and confluences)",
     "A  = no - reasons",
     "",
     "Safeguards",
-    "A filter reason with a blank Decision becomes Filtered on the next log, unless Grade is F (taken against the rules).",
-    "Decision turns orange when it doesn't add up; Grade turns yellow when it differs from Rule grade.",
+    "Decision turns orange when it doesn't add up: Filtered with no filter reason, Missed with one, or Taken with filter reasons and no Filter notes.",
+    "Grade turns yellow when it differs from Rule grade. F is never worked out for you: it's your call.",
 ]
 AUTO_NOTES = [
     "Distance: how close to the entry a level must be, at or behind it (on the stop side), to count as a confluence.",
@@ -169,9 +169,8 @@ def auto_settings(wb, symbol):
 
 
 def autofill_decision(r):
-    """Safeguard: a filter reason with no Decision means Filtered, unless the user graded it F (taken against the rules)."""
-    if any(r.get(c) for c in FILTERS) and not r.get("Decision") and r.get("Grade") != "F":
-        r["Decision"] = "Filtered"
+    """Every trade is Taken unless the user (or --decision) says Filtered or Missed."""
+    if not r.get("Decision"): r["Decision"] = "Taken"
 
 
 def style(ws, cols, n_rows):
@@ -184,7 +183,7 @@ def style(ws, cols, n_rows):
     last = max(n_rows + 1, 2)
     rng = lambda c: f"{L[c]}2:{L[c]}{last}"
     lst = lambda col: f"OFFSET(Lists!${col}$2,0,0,MAX(1,COUNTA(Lists!${col}$2:${col}$1000)),1)"
-    for choices, targets, title in ((f'"{",".join(DECISIONS)}"', ["Decision"], "Blank = taken"),
+    for choices, targets, title in ((f'"{",".join(DECISIONS)}"', ["Decision"], "Taken unless you filtered or missed it"),
                                     (lst("A"), FILTERS, "Why you didn't take it"),
                                     (lst("C"), CONFS, "Level at the entry"),
                                     (f'"{",".join(GRADES)}"', ["Grade"], "Grade it before you know the result"),
@@ -200,14 +199,13 @@ def style(ws, cols, n_rows):
         minus, plus = f'COUNTIF({R_},"-*")', f'(COUNTIF({R_},"+*")+COUNTA({C_}))'
         ws[f"{L['Rule grade']}{r}"] = (
             f'=IF(COUNTA({F_},{C_},{R_},{L["Grade"]}{r})=0,"",'
-            f'IF(AND({L["Decision"]}{r}="",COUNTA({F_})>0),"F",'
-            f'IF({minus}>=2,"C",IF({minus}=1,"B",IF({plus}>=2,"A+","A")))))')
+            f'IF({minus}>=2,"C",IF({minus}=1,"B",IF({plus}>=2,"A+","A"))))')
         ws[f"{L['Rule grade']}{r}"].font = Font(color="555555")
     orange, yellow = PatternFill("solid", bgColor="FFCC80"), PatternFill("solid", bgColor="FFF59D")
-    D, F1, F3, G, RG = L["Decision"], L["Filter 1"], L["Filter 3"], L["Grade"], L["Rule grade"]
+    D, F1, F3, FN, G, RG = L["Decision"], L["Filter 1"], L["Filter 3"], L["Filter notes"], L["Grade"], L["Rule grade"]
     n = f"COUNTA(${F1}2:${F3}2)"
     ws.conditional_formatting.add(rng("Decision"), FormulaRule(formula=[
-        f'OR(AND(${D}2="Filtered",{n}=0),AND(${D}2="Missed",{n}>0),AND(${D}2="",{n}>0,${G}2<>"F"))'], fill=orange))
+        f'OR(AND(${D}2="Filtered",{n}=0),AND(${D}2="Missed",{n}>0),AND(OR(${D}2="Taken",${D}2=""),{n}>0,${FN}2=""))'], fill=orange))
     ws.conditional_formatting.add(rng("Grade"), FormulaRule(formula=[f'AND(${G}2<>"",${RG}2<>"",${G}2<>${RG}2)'], fill=yellow))
     widths = {"Decision": 10, "Filter notes": 30, "Auto confluence": 22, "Grade": 7, "Rule grade": 7,
               "Grade notes": 30, "General notes": 40, **{c: 22 for c in FILTERS + REASONS}, **{c: 12 for c in CONFS}}

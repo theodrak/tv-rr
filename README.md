@@ -109,22 +109,25 @@ values are in the file. Some examples:
 - **Supertrend** or **Ichimoku**, for trend filters;
 - **Anchored VWAP** or **Volume Profile** levels, for confluence.
 
-**Every other indicator column is kept.** Each indicator on the chart becomes a **TV <name>** column in the trade log,
-named after the plot (e.g. **TV RSI**, **TV MACD**). It shows the value on the last candle that closed before the entry,
-so you can filter your trades by it, for example "RSI above 70". There's no limit on the number of indicators, and any
-indicator that plots a number works, including your own Pine scripts.
+**Every other indicator column is kept in the price store.** Each indicator on the chart is stored under its plot's
+name, candle by candle, so Claude can answer questions about it later, e.g. "how did my trades do when RSI was above
+70?". There's no limit on the number of indicators, and any indicator that plots a number works, including your own
+Pine scripts.
+
+The trade log stays as it is by default. If you'd like each indicator as a **TV <name>** column there too (its value on
+the last candle that closed before the entry), turn it on with `config.py set indicator_columns true`.
 
 - **Moving averages are named for you.** TradingView exports a built-in moving average under a plain name ("EMA",
   "MA") and doesn't let you rename it, so two EMAs export as "EMA" and "EMA (2)". The skill works out each one's length
-  from the prices, so the columns read **TV EMA 9** and **TV EMA 20**.
+  from the prices, so they're known as **EMA 9** and **EMA 20**.
 - **Other repeated or unclear names** get numbered ("Plot", "Plot (2)"). Give them your own names with
   `config.py set indicator_names '{"Plot": "RSI 14", "Plot (2)": "RSI signal"}'`.
 - **Signals that only fire on some candles** (buy/sell arrows) are blank on the candles where they didn't fire.
 - **Bar sizes:** values come from your 5-minute and larger exports, taken on the trade's own bar size when you exported
   it. 1-minute exports are big, so their indicator columns are skipped unless you set
   `config.py set indicators_1m true`.
-- **Keep the same indicators on the chart** when you export a newer file. Where exports overlap, the newest file's
-  candles replace the older ones, and a candle only keeps the indicators that were on the chart for that export.
+- **Where exports overlap,** the newest file's values win, indicator by indicator. An indicator you've since taken
+  off the chart keeps its older values.
 
 ### 2. Load the history you want
 
@@ -150,8 +153,24 @@ need. The bars are already loaded from TradingView's servers, so this takes only
 
 ### Your data
 
+Everything is kept in one SQLite database, `~/.tv-rr/data/prices.db`:
+- the candles for every instrument and bar size;
+- every indicator column from your exports;
+- the list of export files already read.
+
+You can open it with any SQLite tool, such as [DB Browser for SQLite](https://sqlitebrowser.org). The `prices` and
+`indicator_values` views show symbol names and readable times. Loading an export reads only that file, and a top-up
+takes milliseconds.
+
+The database runs in WAL mode, so it can be read while it's being updated. It must be on a local disk, not in iCloud,
+Google Drive, Dropbox or OneDrive (the skill refuses a synced folder). An older JSON store is moved in automatically the
+first time.
+
 - `prices.py status` lists what is held for each symbol and bar size.
-- `prices.py export OANDA:EURUSD 1m merged.csv` writes one merged CSV of the stored bars, for opening in Excel.
+- `prices.py export OANDA:EURUSD 5m merged.csv` writes one CSV of the stored bars with volume, VWAP and every
+  indicator column, for Excel, pandas or anyone you share it with. Add `--no-built` to leave out bars built from 1m.
+- `prices.py snapshot share.db` writes a clean single-file copy of the database to hand to someone. Don't copy
+  `prices.db` itself: in WAL mode its latest changes can sit in the `-wal` file beside it.
 - If the TradingView MCP server is connected, Claude can also fill recent gaps from it (see below).
 
 ### Optional: the TradingView MCP server
@@ -167,7 +186,7 @@ exporting first.
 What to expect:
 - **Recent data only:** about a few days of 1-minute bars, so it's for filling gaps, not building history. Exports are
   still the main source.
-- **Prices and volume only:** the TV indicator columns still come from your exports.
+- **Prices and volume only:** indicator values still come from your exports.
 - **Exports win:** where an export and the MCP overlap, the export's bars are kept.
 - **Without it, nothing breaks:** everything works from exports alone.
 
@@ -178,10 +197,21 @@ What to expect:
 
 Ask for "the breakdown", "which target would have worked better", or "a gallery of my trades".
 
+More things you can ask, with drawings copied from TradingView:
+- **"Add these filtered trades"** or **"Add these missed trades"**: logs them with **Decision** set, adding new ones and
+  updating ones already in the sheet. "Update these trades to filtered" works the same way. Needs the journal
+  columns (below).
+- **"Mark these as taken"**: sets them back to Taken. A trade can be Taken even with filter reasons, when something
+  else outweighed them; say why in Filter notes.
+- **"Remove these trades"**: Claude lists what would be removed and asks before deleting.
+
+Each trade also has a **TV chart** column for your own TradingView chart link. Paste a URL, or a link with your own
+text. It's kept whenever the sheet is rebuilt.
+
 ### Optional: a trading journal in the log
 
 Ask Claude to "add journal columns" to a workbook. Each trade then gets these columns:
-- **Decision:** blank if you took it, **Filtered** if a rule said no, or **Missed**.
+- **Decision:** **Taken** (the default for every trade added), **Filtered** if a rule said no, or **Missed**.
 - **Filter 1–3:** up to three filter reasons.
 - **Confluence 1–3:** up to three confluences.
 - **Grade:** a grade with up to three + / − reasons.

@@ -23,9 +23,9 @@ Per trade, on the Trades sheet:
                     than FLAT_PTS; "Upwards turning" / "Downwards turning" when it still moves that way but at less
                     than half the pace of the 10 minutes before (flattening out); otherwise Upwards / Downwards
   VWAP immediate slope   that 10-minute slope against the trade: With / Against / Flat
-  TV <name>         every other indicator column on the exported chart (tv-rr-trades prices.py keeps them), at the last
-                    bar closed before the entry, on the trade's bar size when exported, else the smallest held.
-                    Grouped at the end of the sheet.
+  TV <name>         only with config indicator_columns on: every other indicator column on the exported chart
+                    (tv-rr-trades prices.py always keeps them in the price store), at the last bar closed before the
+                    entry, on the trade's bar size when exported, else the smallest held. Grouped at the end of the sheet.
 "Open" = neither level reached in the price data yet. Blank = not filled, no price data, or levels unknown.
 Breakdown sheet: per variant (Planned, 1/2 stop, 0.5R … 2.5R targets, break-even and ATR versions) and per direction (All / Long / Short) — trades, wins,
 losses, open, win %, net points, net R, and MAE for winners and losers.
@@ -67,7 +67,7 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
     favour = lambda price: max(0.0, (price - e) * sign)
     filled, mae, mfe = False, 0.0, 0.0
     trigger = e + sign * be_at * abs(tp - e) if be_at else None; at_be = False
-    for b in (x for x in bars if x["t"] >= t0):
+    for b in prices.since(bars, t0):
         p = candle_path(b)
         if not filled:
             k = next((k for k in range(3) if min(p[k], p[k + 1]) <= e <= max(p[k], p[k + 1])), None)
@@ -90,13 +90,20 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
 
 
 TV_PREFIX = "TV "
+NOT_INDICATORS = {"TV chart"}  # the user's TradingView link column (tv-rr-trades), not an exported indicator
+
+
+def is_tv_indicator(h):
+    return str(h).startswith(TV_PREFIX) and h not in NOT_INDICATORS
 
 
 def tv_values(ws, head):
     """{sheet row: {"TV <plot name>": value}} from the indicator columns stored with the price exports, read at the last
-    bar closed before each entry (no peeking), on the trade's bar size when it was exported."""
+    bar closed before each entry (no peeking), on the trade's bar size when it was exported. Empty unless config
+    indicator_columns is on: the values are always kept in the price store, but the log only shows them on request
+    (and any TV columns already there are then removed)."""
     out = {}
-    if "Entry (UTC)" not in head: return out
+    if "Entry (UTC)" not in head or not config.load().get("indicator_columns"): return out
     ce, cs, ct = head.index("Entry (UTC)") + 1, head.index("Symbol") + 1, (head.index("Timeframe") + 1 if "Timeframe" in head else None)
     for i in range(2, ws.max_row + 1):
         e, sym = ws.cell(i, ce).value, ws.cell(i, cs).value
@@ -143,7 +150,7 @@ def enrich(path):
             head.append(c)
     tv = tv_values(ws, head)  # {row: {"TV <name>": value}}
     now = {c for vals in tv.values() for c in vals}
-    for i in sorted((n for n, h in enumerate(head, 1) if str(h).startswith(TV_PREFIX) and h not in now), reverse=True):
+    for i in sorted((n for n, h in enumerate(head, 1) if is_tv_indicator(h) and h not in now), reverse=True):
         ws.delete_cols(i); del head[i - 1]
     for c in sorted({c for vals in tv.values() for c in vals}, key=str.lower):
         if c not in head:
@@ -152,9 +159,9 @@ def enrich(path):
     col = {h: i + 1 for i, h in enumerate(head)}
     for i in range(2, ws.max_row + 1):
         for h in head:
-            if str(h).startswith(TV_PREFIX): ws.cell(i, col[h], tv.get(i, {}).get(h))
+            if is_tv_indicator(h): ws.cell(i, col[h], tv.get(i, {}).get(h))
     for h in head:
-        if str(h).startswith(TV_PREFIX):
+        if is_tv_indicator(h):
             ws.column_dimensions[get_column_letter(col[h])].width = 10; ws.column_dimensions[get_column_letter(col[h])].outline_level = 1
     fill = {"Win": PatternFill("solid", fgColor="C8E6C9"), "Loss": PatternFill("solid", fgColor="FFCDD2"),
             "Open": PatternFill("solid", fgColor="BBDEFB"), "BE": PatternFill("solid", fgColor="FFE0B2")}

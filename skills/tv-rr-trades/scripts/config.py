@@ -34,6 +34,7 @@ DEFAULTS = {
     "symbols": {},
     "indicators_1m": False,  # keep other indicator columns from 1-minute exports too (large files)
     "indicator_names": {},   # exported plot name → column name, e.g. {"Buy": "Long signal"}
+    "indicator_columns": False,  # also add a "TV <name>" column per stored indicator to the trade log
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
                 "timeframe": None, "format": ["html"]},
 }
@@ -49,6 +50,16 @@ def _merge(base, over):
 def load():
     raw = json.loads(FILE.read_text()) if FILE.exists() else {}
     return _merge(DEFAULTS, raw)
+
+
+_read = {}
+
+
+def cached():
+    """load(), read once per change of the settings file. Read-only: callers must not modify it (use load() to edit)."""
+    sig = (FILE.stat().st_mtime, FILE.stat().st_size) if FILE.exists() else None
+    if _read.get("sig") != sig or "cfg" not in _read: _read.update(sig=sig, cfg=load())
+    return _read["cfg"]
 
 
 def save(cfg):
@@ -79,7 +90,7 @@ def workbook(override=None):
 
 
 def symbol(sym):
-    cfg = load()
+    cfg = cached()
     return {"tick": None, "session_start": cfg["default_session_start"], **cfg["symbols"].get(sym, {})}
 
 
