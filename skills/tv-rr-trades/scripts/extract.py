@@ -181,6 +181,8 @@ def check_with_prices(r):
     r["Checked on"] = tf
     if not bars or r.get("Stop") is None or r.get("TP planned") is None:
         if tv not in (None, "Not closed"): r.update({"Status": "Closed", "Outcome": tv, "Note": "exit from TradingView"})
+        elif not bars: r.update({"Status": "No price data yet", "Note": "no price data covers this date: export bars for it "
+                                 "(prices.py status lists what is held), or set Confirmed outcome"})
         return r
     long_ = r["Direction"] == "Long"; e, sl, tp = r["Entry"], r["Stop"], r["TP planned"]
     last = local(bars[-1]["t"])
@@ -239,6 +241,7 @@ def apply_confirmation(r):
     elif "in the fill candle; re-checked" in note: reasons.append("TradingView's exit was in the candle the order filled in")
     elif "re-checked on 5m prices" in note: reasons.append("TradingView's exit was in the entry candle")
     elif "TradingView shows no exit" in note: reasons.append("TradingView shows no exit")
+    elif "no price data covers this date" in note: reasons.append("no price data for this date")
     m = re.search(r"order inside one (\d+m) candle", note)
     if m and m.group(1) != "1m": reasons.append(f"decided inside one {m.group(1)} candle")
     if tv in ("TP", "Stop") and out in ("TP", "Stop", "Both in one candle") and out != tv: reasons.append(f"TradingView says {tv}")
