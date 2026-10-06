@@ -191,14 +191,18 @@ def series_id(sym, m, name):
 def put_bars(sym, m, bars, rank, src, keep_last=False):
     """Upsert bars; a row is only replaced by one of equal or higher rank. keep_last: the last bar never replaces an
     existing one (an export's last bar may still have been forming)."""
+    # a source without a column (e.g. an export saved without the Volume plot) never blanks the stored value
     q = ("insert into bars values (?,?,?,?,?,?,?,?,?,?,?,?) on conflict (sid, tf, t) do update set o=excluded.o, "
-         "h=excluded.h, l=excluded.l, c=excluded.c, v=excluded.v, vwap=excluded.vwap, kr=excluded.kr, src=excluded.src, "
+         "h=excluded.h, l=excluded.l, c=excluded.c, v=coalesce(excluded.v, bars.v), "
+         "vwap=coalesce(excluded.vwap, bars.vwap), kr=coalesce(excluded.kr, bars.kr), src=excluded.src, "
          "rank=excluded.rank where excluded.rank >= bars.rank")
+    fill = "update bars set v=? where sid=? and tf=? and t=? and v is null"
     s_, code, rank = sid(sym, create=True), SRC[src], int(rank)
     rows = [(s_, m, b["t"], b["o"], b["h"], b["l"], b["c"], b.get("v"), b.get("vwap"), b.get("kr"), code, rank) for b in bars]
     if keep_last and rows:
         db().execute("insert or ignore into bars values (?,?,?,?,?,?,?,?,?,?,?,?)", rows.pop())
     db().executemany(q, rows)
+    db().executemany(fill, [(r[7], r[0], r[1], r[2]) for r in rows if r[7] is not None])  # lower-ranked sources fill missing volume
     for k in ((sym, m), (sym, m, "no built"), ("ranges", sym)): _cache.pop(k, None)
 
 
