@@ -23,6 +23,9 @@ Per trade, on the Trades sheet:
                     than FLAT_PTS; "Upwards turning" / "Downwards turning" when it still moves that way but at less
                     than half the pace of the 10 minutes before (flattening out); otherwise Upwards / Downwards
   VWAP immediate slope   that 10-minute slope against the trade: With / Against / Flat
+  TV <name>         every other indicator column on the exported chart (tv-rr-trades prices.py keeps them), at the last
+                    bar closed before the entry, on the trade's bar size when exported, else the smallest held.
+                    Grouped at the end of the sheet.
 "Open" = neither level reached in the price data yet. Blank = not filled, no price data, or levels unknown.
 Breakdown sheet: per variant (Planned, 1/2 stop, 0.5R … 2.5R targets, break-even and ATR versions) and per direction (All / Long / Short) — trades, wins,
 losses, open, win %, net points, net R, and MAE for winners and losers.
@@ -34,7 +37,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tv-rr-trades" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import config, indicators, journal  # noqa: E402
+import config, indicators, journal, prices  # noqa: E402
 from extract import UTC, bars_for, candle_path, legacy_name  # noqa: E402
 
 TARGETS = [0.5, 0.75, 1, 1.5, 2, 2.5]
@@ -86,6 +89,26 @@ def walk(bars, t0, long_, e, sl, tp, be_at=None):
     return ("Open" if filled else None), (mae if filled else None), False, (mfe if filled else None)
 
 
+TV_PREFIX = "TV "
+
+
+def tv_values(ws, head):
+    """{sheet row: {"TV <plot name>": value}} from the indicator columns stored with the price exports, read at the last
+    bar closed before each entry (no peeking), on the trade's bar size when it was exported."""
+    out = {}
+    if "Entry (UTC)" not in head: return out
+    ce, cs, ct = head.index("Entry (UTC)") + 1, head.index("Symbol") + 1, (head.index("Timeframe") + 1 if "Timeframe" in head else None)
+    for i in range(2, ws.max_row + 1):
+        e, sym = ws.cell(i, ce).value, ws.cell(i, cs).value
+        if not e or not sym: continue
+        tf = ws.cell(i, ct).value if ct else None
+        try: tf = int(str(tf).rstrip("mM"))
+        except (TypeError, ValueError): tf = None
+        _, vals = prices.indicators_at(sym, int(e.replace(tzinfo=UTC).timestamp()), tf)
+        if vals: out[i] = {TV_PREFIX + k: v for k, v in vals.items()}
+    return out
+
+
 def vwap_direction(recent, sign):
     """(direction, immediate slope) from [VWAP now, 10 min ago, 20 min ago] and the trade's sign (+1 long, -1 short)."""
     if not recent or recent[0] is None or recent[1] is None: return None, None
@@ -109,7 +132,18 @@ def enrich(path):
         if c not in head:
             ws.cell(1, len(head) + 1, c).font = Font(bold=True); ws.cell(1, len(head) + 1).alignment = Alignment(horizontal="center")
             head.append(c)
+    tv = tv_values(ws, head)  # {row: {"TV <name>": value}}
+    for c in sorted({c for vals in tv.values() for c in vals}, key=str.lower):
+        if c not in head:
+            ws.cell(1, len(head) + 1, c).font = Font(bold=True); ws.cell(1, len(head) + 1).alignment = Alignment(horizontal="center", wrap_text=True)
+            head.append(c)
     col = {h: i + 1 for i, h in enumerate(head)}
+    for i in range(2, ws.max_row + 1):
+        for h in head:
+            if str(h).startswith(TV_PREFIX): ws.cell(i, col[h], tv.get(i, {}).get(h))
+    for h in head:
+        if str(h).startswith(TV_PREFIX):
+            ws.column_dimensions[get_column_letter(col[h])].width = 10; ws.column_dimensions[get_column_letter(col[h])].outline_level = 1
     fill = {"Win": PatternFill("solid", fgColor="C8E6C9"), "Loss": PatternFill("solid", fgColor="FFCDD2"),
             "Open": PatternFill("solid", fgColor="BBDEFB"), "BE": PatternFill("solid", fgColor="FFE0B2")}
     records, auto_cache = [], {}

@@ -105,7 +105,8 @@ Outcomes are checked on stored bars: 1-minute wherever they cover a trade, other
 **Ingesting:**
 - **`scripts/prices.py ingest`** reads every export folder and merges overlapping files: the newest wins, except its last, possibly unfinished, bar. `extract.py` runs it automatically, and unchanged files cost nothing.
   - **Keeps bars once read:** deleting old exports is safe, and `ingest --rebuild` starts again from the files present.
-  - **Builds 5m, 15m, 30m and 60m bars from 1m** wherever no export of that size exists; an exported bar always wins.
+  - **Keeps every other indicator column** (RSI, MAs, levels…) under its plot name, in `<size>m.indicators.json` beside the bars. This applies to exports of 5 minutes and up; set `indicators_1m true` to include 1-minute exports. `prices.py status` lists the columns held. Each file is read once more after an upgrade to pick these up.
+- **Builds 5m, 15m, 30m and 60m bars from 1m** wherever no export of that size exists; an exported bar always wins.
 - **`prices.py status`** lists what is held.
 - **`prices.py export SYMBOL 1m out.csv`** writes one merged CSV.
 - **TradingView MCP top-up, if connected:** when a trade says **Open** or **No price data yet**, fetch bars with `mcp-tv-get-ohlcv`. Save the returned JSON to a file and run `prices.py add SYMBOL 5m FILE`, then `extract.py --recheck`. Keep top-ups to a few hundred bars, because the MCP holds only a few days of 1m history.

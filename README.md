@@ -109,9 +109,19 @@ values are in the file. Some examples:
 - **Supertrend** or **Ichimoku**, for trend filters;
 - **Anchored VWAP** or **Volume Profile** levels, for confluence.
 
-The skill reads Volume, VWAP and the price bars from each export today. Other indicator columns stay in your export
-files, where Claude can read them when you ask a question about them (for example "how did my trades do when RSI was
-above 70?"), so keep those files.
+**Every other indicator column is kept.** Each indicator on the chart becomes a **TV <name>** column in the trade log,
+named after the plot (e.g. **TV RSI**, **TV MACD**). It shows the value on the last candle that closed before the entry,
+so you can filter your trades by it, for example "RSI above 70". There's no limit on the number of indicators, and any
+indicator that plots a number works, including your own Pine scripts.
+
+- **Name your plots.** Two plots with the same name (two "EMA"s) become **TV EMA** and **TV EMA (2)**. Give each one a
+  clear title in the indicator's settings (Style tab), e.g. "EMA 9" and "EMA 21", so the columns say what they are.
+- **Signals that only fire on some candles** (buy/sell arrows) are blank on the candles where they didn't fire.
+- **Bar sizes:** values come from your 5-minute and larger exports, taken on the trade's own bar size when you exported
+  it. 1-minute exports are big, so their indicator columns are skipped unless you set
+  `config.py set indicators_1m true`.
+- **Keep the same indicators on the chart** when you export a newer file. Where exports overlap, the newest file's
+  candles replace the older ones, and a candle only keeps the indicators that were on the chart for that export.
 
 ### 2. Load the history you want
 
