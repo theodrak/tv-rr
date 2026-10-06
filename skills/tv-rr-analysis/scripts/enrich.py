@@ -104,9 +104,18 @@ def tv_values(ws, head):
         tf = ws.cell(i, ct).value if ct else None
         try: tf = int(str(tf).rstrip("mM"))
         except (TypeError, ValueError): tf = None
-        _, vals = prices.indicators_at(sym, int(e.replace(tzinfo=UTC).timestamp()), tf)
-        if vals: out[i] = {TV_PREFIX + k: v for k, v in vals.items()}
+        m, vals = prices.indicators_at(sym, int(e.replace(tzinfo=UTC).timestamp()), tf)
+        if vals: out[i] = {TV_PREFIX + tv_name(sym, m, k): v for k, v in vals.items()}
     return out
+
+
+def tv_name(sym, m, name):
+    """The column name for an exported plot: the user's rename (config indicator_names) first; else a plain "EMA" /
+    "MA" plot gets its length worked out from the prices ("EMA (2)" → "EMA 20"); else the plot's own name."""
+    renames = config.load().get("indicator_names") or {}
+    if name in renames: return renames[name]
+    found = indicators.ma_length(sym, m, name, prices.indicator_rows(sym, m))
+    return f"{found[0]} {found[1]}" if found else name
 
 
 def vwap_direction(recent, sign):
@@ -133,6 +142,9 @@ def enrich(path):
             ws.cell(1, len(head) + 1, c).font = Font(bold=True); ws.cell(1, len(head) + 1).alignment = Alignment(horizontal="center")
             head.append(c)
     tv = tv_values(ws, head)  # {row: {"TV <name>": value}}
+    now = {c for vals in tv.values() for c in vals}
+    for i in sorted((n for n, h in enumerate(head, 1) if str(h).startswith(TV_PREFIX) and h not in now), reverse=True):
+        ws.delete_cols(i); del head[i - 1]
     for c in sorted({c for vals in tv.values() for c in vals}, key=str.lower):
         if c not in head:
             ws.cell(1, len(head) + 1, c).font = Font(bold=True); ws.cell(1, len(head) + 1).alignment = Alignment(horizontal="center", wrap_text=True)

@@ -11,7 +11,7 @@ VWAP uses the export's own "VWAP" column when there is one (exactly what the cha
 "Kernel Regression Estimate" column and otherwise computes the indicator's default (rational quadratic, lookback 8,
 relative weight 8, regression start 25).
 """
-import bisect, datetime as dt, sys
+import bisect, datetime as dt, re, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tv-rr-trades" / "scripts"))
@@ -172,6 +172,35 @@ def vwap_recent(sym, t, minutes=10, steps=2):
     vw = vwap_series(sym, bars[j0:i + 1])
     n = max(1, minutes // m)
     return [vw[i - j0 - s * n] if i - s * n >= j0 else None for s in range(steps + 1)]
+
+
+MA_NAME = re.compile(r"(EMA|SMA|MA|Moving Average(?: Exponential| Simple)?)(?: \(\d+\))?", re.I)
+
+
+def ma_length(sym, m, name, rows, max_len=500):
+    """("EMA" | "SMA", length) when the exported column `name` matches a moving average of the closes exactly, else
+    None. Only plain names ("EMA", "MA", "EMA (2)") are tried; a name that already says its length is left alone."""
+    k = ("malen", sym, m, name)
+    if k in _cache: return _cache[k]
+    _cache[k] = None
+    if not MA_NAME.fullmatch(name): return None
+    bars = prices.load(sym, m)
+    if not bars: return None
+    tail = bars[-(6 * max_len + 2000):]; at = {b["t"]: i for i, b in enumerate(tail)}
+    pts = [(at[r["t"]], r[name]) for r in rows[-3000:] if name in r and r["t"] in at and at[r["t"]] >= 5 * max_len][-1000:]
+    if len(pts) < 50: return None
+    closes = [b["c"] for b in tail]
+    tol = 1e-6 * abs(pts[-1][1])  # the same line to rounding (a neighbouring length is ~100x further off)
+    kinds = ("EMA",) if name.upper().startswith("E") or "EXPONENTIAL" in name.upper() else ("SMA",) if name.upper().startswith("S") or "SIMPLE" in name.upper() else ("EMA", "SMA")
+    best = None
+    for kind in kinds:
+        for n in range(2, max_len + 1):
+            line = ema(closes, n) if kind == "EMA" else sma(closes, n)
+            if any(line[i] is None for i, _ in pts): continue
+            err = sum(abs(line[i] - v) for i, v in pts) / len(pts)
+            if best is None or err < best[0]: best = (err, kind, n)
+    if best and best[0] <= tol: _cache[k] = (best[1], best[2])
+    return _cache[k]
 
 
 def kernel_series(bars, h=8, r=8.0, x=25):

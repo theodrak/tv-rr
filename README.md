@@ -114,8 +114,11 @@ named after the plot (e.g. **TV RSI**, **TV MACD**). It shows the value on the l
 so you can filter your trades by it, for example "RSI above 70". There's no limit on the number of indicators, and any
 indicator that plots a number works, including your own Pine scripts.
 
-- **Name your plots.** Two plots with the same name (two "EMA"s) become **TV EMA** and **TV EMA (2)**. Give each one a
-  clear title in the indicator's settings (Style tab), e.g. "EMA 9" and "EMA 21", so the columns say what they are.
+- **Moving averages are named for you.** TradingView exports a built-in moving average under a plain name ("EMA",
+  "MA") and doesn't let you rename it, so two EMAs export as "EMA" and "EMA (2)". The skill works out each one's length
+  from the prices, so the columns read **TV EMA 9** and **TV EMA 20**.
+- **Other repeated or unclear names** get numbered ("Plot", "Plot (2)"). Give them your own names with
+  `config.py set indicator_names '{"Plot": "RSI 14", "Plot (2)": "RSI signal"}'`.
 - **Signals that only fire on some candles** (buy/sell arrows) are blank on the candles where they didn't fire.
 - **Bar sizes:** values come from your 5-minute and larger exports, taken on the trade's own bar size when you exported
   it. 1-minute exports are big, so their indicator columns are skipped unless you set

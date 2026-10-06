@@ -30,7 +30,7 @@ uv run -q --with openpyxl python scripts/enrich.py [--file WORKBOOK]
 | **VWAP, VWAP dist, VWAP side, VWAP in the way, VWAP behind** | Session VWAP at entry: its value, the entry's distance (+ = beyond it your way), the side price closed on, and whether it sits between entry and TP or between stop and entry |
 | **VWAP 30m change** | With / Against: VWAP higher or lower than 30 minutes earlier. Not a slope: on an open-type setup it often reaches back before the open's spike. (Called "VWAP slope" before.) |
 | **VWAP direction** | The line at entry over the last 10 minutes: **Flat** (moved < 2 pts), **Upwards / Downwards**, or **Upwards turning / Downwards turning** when it still moves that way at under half the pace of the 10 minutes before (flattening out) |
-| **TV <name>** | Every other indicator column on the exported chart (e.g. TV RSI, TV EMA (2)), read from the last bar closed before the entry, on the trade's bar size when it was exported. Grouped at the end of the sheet; blank where the export had no value (signals that didn't fire) |
+| **TV <name>** | Every other indicator column on the exported chart (e.g. TV RSI). A plain "EMA" / "MA" plot is named by the length that matches the prices exactly ("EMA (2)" → TV EMA 20); config `indicator_names` renames any plot. Values are read from the last bar closed before the entry, on the trade's bar size when it was exported. Grouped at the end of the sheet; blank where the export had no value (signals that didn't fire) |
 | **VWAP immediate slope** | That 10-minute slope against the trade: **With / Against / Flat** |
 
 - **Blank** means not filled, no price data, or a value that can't be known. For example, VWAP needs a Volume or VWAP column in the exports.

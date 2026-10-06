@@ -252,16 +252,21 @@ def indicator_sizes(sym):
     return sorted(int(p.name.split("m.")[0]) for p in d.glob("*m.indicators.json")) if d.exists() else []
 
 
+def indicator_rows(sym, m):
+    k = ("ind", sym, m)
+    if k not in _cache:
+        f = _ind_file(sym, m)
+        rows = json.loads(f.read_text())["bars"] if f.exists() else []; _cache[k] = ([r["t"] for r in rows], rows)
+    return _cache[k][1]
+
+
 def indicators_at(sym, t, prefer=None):
     """(minutes, {plot name: value}) from the last bar of stored indicator columns that had closed by t: on the
     `prefer` bar size when held, otherwise the smallest held. (None, {}) without indicator data."""
     sizes = indicator_sizes(sym)
     if not sizes: return None, {}
     m = prefer if prefer in sizes else sizes[0]
-    k = ("ind", sym, m)
-    if k not in _cache:
-        rows = json.loads(_ind_file(sym, m).read_text())["bars"]; _cache[k] = ([r["t"] for r in rows], rows)
-    ts, rows = _cache[k]
+    indicator_rows(sym, m); ts, rows = _cache[("ind", sym, m)]
     i = bisect.bisect_right(ts, t - m * 60) - 1
     if i < 0 or t - ts[i] > 4 * 86400: return m, {}
     return m, {n: v for n, v in rows[i].items() if n != "t"}

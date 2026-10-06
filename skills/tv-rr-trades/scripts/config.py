@@ -33,6 +33,7 @@ DEFAULTS = {
     "default_session_start": "17:00 America/New_York",
     "symbols": {},
     "indicators_1m": False,  # keep other indicator columns from 1-minute exports too (large files)
+    "indicator_names": {},   # exported plot name → column name, e.g. {"Buy": "Long signal"}
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
                 "timeframe": None, "format": ["html"]},
 }
