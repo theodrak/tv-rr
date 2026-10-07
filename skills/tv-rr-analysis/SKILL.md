@@ -64,6 +64,15 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **`pdf`:** a summary page, then one A4 page per trade. Use it for sharing and printing.
 - **`markdown`:** a page for Obsidian, VS Code or GitHub.
 
+**Each trade's facts.** Under each trade's heading (HTML and Markdown), a row shows:
+- **risk**, in points, or in pips for 5-decimal FX;
+- **5m ATR**;
+- **1/2 stop**, **1R** and **1.5R** what-ifs (coloured win/loss in HTML, ✅/❌ in Markdown);
+- **MAE**, **MFE**, **Decision** and **Grade**;
+- the **TV chart** link (the cell's hyperlink target).
+
+The **Filter, Grade and General notes** go on their own line below. The HTML sidebar filters by **Wins/Losses**, **Decision** and **Grade** together, and counts the trades shown.
+
 **Chart links in the workbook.** With `html`, every trade gets a **Chart** column in the workbook: "Open chart" jumps straight to that trade in the gallery.
 - **Each trade's section is anchored** on its symbol and TradingView drawing id. A one-line jump page per trade redirects to the anchor, because Excel strips `#anchors` (and `?queries`) from links to local files.
 - **On a Mac the jump pages live in Office's own folder** (`~/Library/Group Containers/UBF8T346G9.Office/tv-rr/<id>/`). Mac Excel is sandboxed: it asks permission for every other file a link opens and can't be given a folder, but it opens files there without asking. Those links are absolute, so if the gallery folder moves, run the gallery again.

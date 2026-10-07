@@ -217,6 +217,43 @@ def trade_line(t):
             + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""))
 
 
+FACTS = ("Risk", "5m ATR", "1/2 stop", "1R", "1.5R", "MAE", "MFE", "Decision", "Grade", "TV chart")
+NOTES = ("Filter notes", "Grade notes", "General notes")
+RESULT_MARK = {"Win": "✅ Win", "Loss": "❌ Loss", "BE": "⚪ BE"}
+
+
+def tv_links(wbp):
+    """{drawing id: URL} from the workbook's TV chart column (the hyperlink's target when the cell shows text)."""
+    from openpyxl import load_workbook
+    try: ws = load_workbook(wbp)["Trades"]
+    except Exception: return {}
+    head = [c.value for c in ws[1]]
+    if "TV chart" not in head or "Drawing id" not in head: return {}
+    c_tv, c_id = head.index("TV chart") + 1, head.index("Drawing id") + 1; out = {}
+    for i in range(2, ws.max_row + 1):
+        cell = ws.cell(i, c_tv); url = cell.hyperlink.target if cell.hyperlink is not None else cell.value
+        if isinstance(url, str) and url.startswith(("http://", "https://")): out[ws.cell(i, c_id).value] = url
+    return out
+
+
+def facts(t, links):
+    """([(name, text, url)], [(note name, text)]) for each trade: the top row (risk in points, or pips for 5-decimal FX;
+    the 5m ATR; the half-stop and 1R / 1.5R what-ifs; MAE / MFE; decision, grade and the TradingView link) and the
+    notes, which go on their own line. Empty values show as "–"."""
+    tick = config.symbol(t["Symbol"]).get("tick")
+    risk = t.get("Risk pts")
+    if risk is None: rtxt = "–"
+    elif tick and tick < 0.001: rtxt = f"{risk / (tick * 10):,.1f} pips"
+    else: rtxt = f"{risk:,.1f} pts"
+    num = lambda k: "–" if t.get(k) is None else f"{t[k]:,.1f}"
+    txt = lambda k: "–" if t.get(k) in (None, "") else str(t[k])
+    url = links.get(t.get("Drawing id"))
+    top = [("Risk", rtxt, None), ("5m ATR", num("ATR 5m"), None), ("1/2 stop", txt("1/2 stop"), None), ("1R", txt("TP 1R"), None),
+           ("1.5R", txt("TP 1.5R"), None), ("MAE", num("MAE pts"), None), ("MFE", num("MFE pts"), None),
+           ("Decision", txt("Decision"), None), ("Grade", txt("Grade"), None), ("TV chart", "open" if url else "–", url)]
+    return top, [(n, txt(n)) for n in NOTES]
+
+
 def heading(t):
     d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
     return f"{d:%a} {d.day} {d:%b %Y} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}"
@@ -275,17 +312,39 @@ def write_html(path, label, wbp, made):
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
     rows = "".join("<tr>" + "".join(f"<td>{h.escape(str(c))}</td>" for c in r) + "</tr>" for r in summary(made))
     syms = len({t["Symbol"] for t, _ in made}) > 1
+    dec = lambda t: str(t.get("Decision") or "Taken")
+    grade = lambda t: str(t.get("Grade") or "Ungraded")
+    attrs = lambda t: f'data-res="{"tp" if t["Outcome"] == "TP" else "sl"}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}"'
     side = "".join(
-        f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}">'
+        f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
         f'<span>{"Win" if t["Outcome"] == "TP" else "Loss"} · {h.escape(t["Direction"])}'
         + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in made)
+    def opts(f):
+        order = {"Taken": 0, "Filtered": 1, "Missed": 2, "A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5, "Ungraded": 9}
+        vals = sorted({f(t) for t, _ in made}, key=lambda v: (order.get(v, 8), v))
+        return '<option value="all">All</option>' + "".join(
+            f'<option value="{h.escape(v)}">{h.escape(v)} ({sum(f(t) == v for t, _ in made)})</option>' for v in vals)
+
     def dims(p):
         import struct
         with open(p, "rb") as fh: head = fh.read(24)
         w, ht = struct.unpack(">II", head[16:24]); return f'width="{w}" height="{ht}"'
+    links = tv_links(wbp)
+
+    def fact_table(t):
+        top, notes = facts(t, links); cells = []
+        for _, v, u in top:
+            if u: cells.append('<td><a href="%s" target="_blank">%s</a></td>' % (h.escape(u), h.escape(v)))
+            else: cells.append('<td class="%s">%s</td>' % ({"Win": "rw", "Loss": "rl", "BE": "rb"}.get(v, ""), h.escape(v)))
+        heads = "".join("<th>%s</th>" % h.escape(n) for n in FACTS)
+        note = "".join('<div><b>%s</b> %s</div>' % (h.escape(n), h.escape(v)) for n, v in notes)
+        return ('<div class="scroll"><table class="facts"><tr>%s</tr><tr>%s</tr></table></div><div class="notes">%s</div>'
+                % (heads, "".join(cells), note))
+
     body = "".join(
-        f'<section id="{anchor(t)}"><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
+        f'<section id="{anchor(t)}" {attrs(t)}><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
+        f'{fact_table(t)}'
         f'<a href="{rel(p1)}" target="_blank"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
         f'<a href="{rel(p2)}" target="_blank"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in made)
     css = """
@@ -294,6 +353,8 @@ nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-righ
 nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;margin:4px 8px 8px}
 nav .filter{display:flex;gap:4px;margin:0 6px 8px} nav .filter button{flex:1;font:12px inherit;padding:3px 0;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
 nav .filter button.on{background:#222;color:#fff;border-color:#222}
+nav .pick{display:flex;gap:6px;margin:0 6px 10px} nav .pick label{flex:1;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em}
+nav .pick select{display:block;width:100%;margin-top:2px;font:12px inherit;padding:2px;border:1px solid #ddd;border-radius:4px;background:#fff;text-transform:none}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
 nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828}
@@ -302,6 +363,12 @@ main{margin-left:230px;padding:24px 28px;max-width:1300px}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
 section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:8px} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
+table.facts{margin:6px 0 8px;font-size:12.5px;width:100%} table.facts th{background:#f5f5f5;font-weight:600;white-space:nowrap;padding:3px 6px}
+table.facts td{padding:3px 6px} td.rw{background:#e8f5e9;color:#2e7d32;font-weight:600} td.rl{background:#ffebee;color:#c62828;font-weight:600}
+td.rb{background:#fff8e1;color:#a66b00;font-weight:600}
+.scroll{overflow-x:auto} .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 16px;font-size:12.5px;margin:0 0 8px;color:#333}
+.notes b{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em}
+@media (max-width:800px){.notes{grid-template-columns:1fr}}
 @media (max-width:800px){nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
 """
     js = """
@@ -311,15 +378,21 @@ function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id))
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
-document.querySelectorAll('nav .filter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav .filter button').forEach(x=>x.classList.toggle('on',x===b));
-  const f=b.dataset.f;links.forEach(a=>a.style.display=(f==='all'||a.classList.contains(f))?'':'none');
-  document.querySelectorAll('main section').forEach(s=>s.style.display=(f==='all'||s.querySelector('h2').classList.contains(f))?'':'none')});
+let res='all';
+function apply(){const d=document.getElementById('dec').value,g=document.getElementById('grade').value;
+  const ok=e=>(res==='all'||e.dataset.res===res)&&(d==='all'||e.dataset.dec===d)&&(g==='all'||e.dataset.grade===g);
+  links.forEach(a=>a.style.display=ok(a)?'':'none');
+  let n=0;document.querySelectorAll('main section').forEach(s=>{const v=ok(s);s.style.display=v?'':'none';if(v)n++});
+  document.getElementById('shown').textContent=n}
+document.querySelectorAll('nav .filter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav .filter button').forEach(x=>x.classList.toggle('on',x===b));res=b.dataset.f;apply()});
+document.getElementById('dec').onchange=apply; document.getElementById('grade').onchange=apply;
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
 """
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
-<nav><h3>{len(made)} trades</h3><div class="filter"><button class="on" data-f="all">All</button><button data-f="tp">Wins</button><button data-f="sl">Losses</button></div>{side}</nav>
+<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3><div class="filter"><button class="on" data-f="all">All</button><button data-f="tp">Wins</button><button data-f="sl">Losses</button></div>
+<div class="pick"><label>Decision<select id="dec">{opts(dec)}</select></label><label>Grade<select id="grade">{opts(grade)}</select></label></div>{side}</nav>
 <main><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
@@ -354,11 +427,16 @@ def write_note(note, label, wbp, made, style):
             w = sum(t["Outcome"] == "TP" for t in s)
             L.append(f"| {grp} | {len(s)} | {w} | {100 * w / len(s):.0f}% | {avg(ex(s, 'MAE pts'))} | {avg(ex(s, 'MFE pts'))} |")
     L += ["", "## Trades", ""]
+    links = tv_links(wbp)
+    cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
     for t, (p1, p2) in made:
         d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
         L += [f"### {d:%a} {d.day} {d:%b} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}", "",
               f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
               + (f" · MAE {t['MAE pts']:.1f}" if t.get("MAE pts") is not None else "") + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""), "",
+              "| " + " | ".join(FACTS) + " |", "|" + "---|" * len(FACTS),
+              "| " + " | ".join(f"[{v}]({u})" if u else cell(RESULT_MARK.get(v, v)) for _, v, u in facts(t, links)[0]) + " |", "",
+              *[f"**{n}:** {cell(v)}  " for n, v in facts(t, links)[1]], "",
               link(p1, note.parent, style), "", link(p2, note.parent, style), ""]
     note.parent.mkdir(parents=True, exist_ok=True); note.write_text("\n".join(L))
 
