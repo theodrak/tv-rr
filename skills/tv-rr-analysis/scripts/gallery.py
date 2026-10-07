@@ -385,8 +385,13 @@ section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
 body.img-ent a.fol, body.img-fol a.ent{display:none}
 main section a.ent, main section a.fol{cursor:zoom-in}
-#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(15,15,15,.97);align-items:center;justify-content:center}
-#lb.open{display:flex} #lb img{max-width:100vw;max-height:100vh;width:auto;height:auto;margin:0;border:0;object-fit:contain;background:#fff}
+#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(60,60,60,.72);align-items:center;justify-content:center;cursor:zoom-out}
+#lb.open{display:flex} #lb img{max-width:95vw;max-height:95vh;width:auto;height:auto;margin:0;border:0;object-fit:contain;background:#fff;
+  box-shadow:0 6px 30px rgba(0,0,0,.45);cursor:default}
+.lbnav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;border-radius:6px;background:rgba(0,0,0,.45);
+  color:#fff;font-size:38px;line-height:60px;cursor:pointer;z-index:101} .lbnav:hover{background:rgba(0,0,0,.7)} .lbnav:disabled{opacity:.2;cursor:default}
+#lbprev{left:6px} #lbnext{right:6px}
+#lbcap{position:fixed;bottom:4px;left:50%;transform:translateX(-50%);color:#fff;font-size:12.5px;background:rgba(0,0,0,.5);padding:2px 10px;border-radius:10px;white-space:nowrap}
 #lbx{position:fixed;top:12px;right:16px;width:42px;height:42px;border:0;border-radius:50%;background:#e53935;color:#fff;
   font-size:22px;line-height:42px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);z-index:101} #lbx:hover{background:#c62828}
 table.facts{margin:6px 0 8px;font-size:12.5px;width:100%} table.facts th{background:#f5f5f5;font-weight:600;white-space:nowrap;padding:3px 6px}
@@ -424,13 +429,26 @@ apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
   document.querySelectorAll('header button[data-img]').forEach(x=>x.classList.toggle('on',x===b));
   document.body.classList.remove('img-ent','img-fol'); if(b.dataset.img!=='both')document.body.classList.add('img-'+b.dataset.img);hh()});
-// clicking a chart shows it full window; the red cross, a double-click or Escape closes it
-const lb=document.getElementById('lb'), lbimg=document.getElementById('lbimg');
-function closeLb(){lb.classList.remove('open');lbimg.removeAttribute('src');document.body.style.overflow=''}
-document.querySelectorAll('main section a.ent, main section a.fol').forEach(a=>a.onclick=e=>{e.preventDefault();
-  lbimg.src=a.getAttribute('href');lbimg.alt=a.querySelector('img').alt;lb.classList.add('open');document.body.style.overflow='hidden'});
+// clicking a chart shows it at ~95% of the window over a greyed backdrop. The red cross, a click on the backdrop, a
+// double-click or Escape closes it; the arrow keys and the side arrows step through the charts the page is showing,
+// so the filters and the Images choice carry over.
+const lb=document.getElementById('lb'), lbimg=document.getElementById('lbimg'), lbcap=document.getElementById('lbcap');
+let lbList=[], lbAt=-1;
+const shownCharts=()=>[...document.querySelectorAll('main section a.ent, main section a.fol')].filter(a=>a.offsetParent!==null);
+function showAt(i){if(i<0||i>=lbList.length)return; lbAt=i; const a=lbList[i], sec=a.closest('section');
+  lbimg.src=a.getAttribute('href'); lbimg.alt=a.querySelector('img').alt;
+  lbcap.textContent=`${i+1} / ${lbList.length} · ${sec.querySelector('h2').textContent} · ${a.classList.contains('ent')?'at entry':'follow-through'}`;
+  document.getElementById('lbprev').disabled=i===0; document.getElementById('lbnext').disabled=i===lbList.length-1}
+function openLb(a){lbList=shownCharts(); showAt(lbList.indexOf(a)); lb.classList.add('open'); document.body.style.overflow='hidden'}
+function closeLb(){if(lbAt>=0&&lbList[lbAt])lbList[lbAt].closest('section').scrollIntoView({block:'start'});
+  lb.classList.remove('open'); lbimg.removeAttribute('src'); document.body.style.overflow=''; lbAt=-1}
+document.querySelectorAll('main section a.ent, main section a.fol').forEach(a=>a.onclick=e=>{e.preventDefault(); openLb(a)});
 document.getElementById('lbx').onclick=closeLb; lb.ondblclick=closeLb;
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&lb.classList.contains('open'))closeLb()});
+lb.onclick=e=>{if(e.target===lb)closeLb()};                 // a click on the greyed border
+document.getElementById('lbprev').onclick=e=>{e.stopPropagation(); showAt(lbAt-1)};
+document.getElementById('lbnext').onclick=e=>{e.stopPropagation(); showAt(lbAt+1)};
+document.addEventListener('keydown',e=>{if(!lb.classList.contains('open'))return;
+  if(e.key==='Escape')closeLb(); else if(e.key==='ArrowLeft'){e.preventDefault(); showAt(lbAt-1)} else if(e.key==='ArrowRight'){e.preventDefault(); showAt(lbAt+1)}});
 function hh(){document.documentElement.style.setProperty('--hh',document.querySelector('header.top').offsetHeight+'px')}
 hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
@@ -446,8 +464,10 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
-<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to see it full window (close with the red cross, a double-click or Escape).</p>
-{body}</main><div id="lb" role="dialog" aria-modal="true" aria-label="Chart"><button id="lbx" aria-label="Close">&#x2715;</button><img id="lbimg" alt=""></div>
+<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to enlarge it, use ← → to step through the charts shown, and close it with the red cross, a click outside it, a double-click or Escape.</p>
+{body}</main><div id="lb" role="dialog" aria-modal="true" aria-label="Chart"><button id="lbx" aria-label="Close">&#x2715;</button>
+<button class="lbnav" id="lbprev" aria-label="Previous chart">&#x2039;</button><img id="lbimg" alt=""><button class="lbnav" id="lbnext" aria-label="Next chart">&#x203A;</button>
+<div id="lbcap"></div></div>
 <script>{js}</script></body></html>""")
     from enrich import OFFICE_CONTAINER, jump_dir
     d = jump_dir(path); d.mkdir(parents=True, exist_ok=True); absolute = OFFICE_CONTAINER in d.parents

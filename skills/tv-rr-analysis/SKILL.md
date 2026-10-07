@@ -76,7 +76,7 @@ The **Filter, Grade and General notes** go on their own line below. The HTML pag
 - **Filters:** toggle buttons for **Outcome**, **Decision** and **Grade**. Several in one group show trades matching any of them (OR), the groups combine (AND), and **Clear** resets. An **Images** choice (Entry only / Exit only / Both, default Both) shows the at-entry charts, the follow-through charts or both.
 - **Filtered:** the same rows for the trades shown, updated with every click.
 
-Every page lists the trades newest first. Clicking a chart in the HTML page shows it full window over the page (no new tab); the red cross, a double-click or Escape closes it.
+Every page lists the trades newest first. Clicking a chart in the HTML page opens it in a viewer over the page (no new tab), at about 95% of the window with a grey see-through border. ← / → (keys or the side buttons) step through the charts the page is showing, so the filters and the Images choice carry over, and a caption gives the position, trade and chart. The red cross, a click on the border, a double-click or Escape closes it and leaves the page at the last trade viewed.
 
 The sidebar lists the trades shown.
 
