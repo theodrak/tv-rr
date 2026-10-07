@@ -120,9 +120,11 @@ def draw_pair(r, label, tag, images_dir, elements):
             ax.plot([x_end, lx], [y, y], color=col, lw=0.9, ls=(0, (2, 2)), zorder=8)
             ax.text(lx, y, txt, fontsize=12, color=col, weight="bold", va="center", zorder=12, bbox=dict(fc="white", ec=col, lw=1.0, pad=3))
         if exit_k is not None and r.get("Exit time"):
-            px = tp if win else sl; col = "#00796b" if win else "#c62828"
+            be = r["Outcome"] == "BE"
+            px = e if be else tp if win else sl; col = "#616161" if be else "#00796b" if win else "#c62828"
             ax.plot(exit_k, px, marker="o", ms=14, mfc="none", mec=col, mew=2.6, zorder=13)
-            ax.text(lx, px + (1 if px > e else -1) * 0.045 * span, f"{'TP hit' if win else 'Stopped'} {r['Exit time']:%H:%M}  ({r['Result R']:+.1f}R)",
+            ax.text(lx, (px + (1 if tp > e else -1) * 0.09 * span) if be else px + (1 if px > e else -1) * 0.045 * span,
+                    f"{'Break-even' if be else 'TP hit' if win else 'Stopped'} {r['Exit time']:%H:%M}  ({r['Result R']:+.1f}R)",
                     fontsize=12, color=col, weight="bold", va="center", zorder=12, bbox=dict(fc="white", ec="#9e9e9e", pad=3))
 
     start = max(0, i - BEFORE)
@@ -171,7 +173,7 @@ def main():
     from openpyxl import load_workbook
     rows = list(load_workbook(wbp, read_only=True)["Trades"].iter_rows(values_only=True))
     head = [legacy_name(h) for h in rows[0]]; trades = [dict(zip(head, x)) for x in rows[1:] if any(v is not None for v in x)]
-    trades = [t for t in trades if t.get("Outcome") in ("TP", "Stop") and None not in (t.get("Entry"), t.get("Stop"), t.get("TP planned"))]
+    trades = [t for t in trades if t.get("Outcome") in ("TP", "Stop", "BE") and None not in (t.get("Entry"), t.get("Stop"), t.get("TP planned"))]
     if a.only: trades = [t for t in trades if t["Entry time"].strftime("%Y-%m-%d") in a.only]
     if a.symbol: trades = [t for t in trades if t["Symbol"] == a.symbol]
     made = []
@@ -220,6 +222,9 @@ def trade_line(t):
 FACTS = ("Risk", "5m ATR", "1/2 stop", "1R", "1.5R", "MAE", "MFE", "Decision", "Grade", "TV chart")
 NOTES = ("Filter notes", "Grade notes", "General notes")
 RESULT_MARK = {"Win": "✅ Win", "Loss": "❌ Loss", "BE": "⚪ BE"}
+# Outcome → (CSS class, heading mark, sidebar word, colour). BE: the stop had been moved to the entry and price came back to it
+OUTCOMES = {"TP": ("tp", "✅ TP", "Win", "#2e7d32"), "Stop": ("sl", "❌ Stop", "Loss", "#c62828"), "BE": ("be", "⚪ BE", "BE", "#616161")}
+res_of = lambda t: OUTCOMES.get(t["Outcome"], OUTCOMES["Stop"])
 
 
 def tv_links(wbp):
@@ -255,7 +260,7 @@ def facts(t, links):
 
 
 def heading(t):
-    d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
+    d = t["Entry time"]; res = res_of(t)[1]
     return f"{d:%a} {d.day} {d:%b %Y} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}"
 
 
@@ -280,13 +285,13 @@ def write_pdf(path, label, wbp, made):
         y -= 0.06
         for t, _ in newest_first(made):
             if y < 0.05: pdf.savefig(fig); plt.close(fig); fig = plt.figure(figsize=(8.27, 11.69)); y = 0.95
-            fig.text(0.07, y, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=8.5, color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
+            fig.text(0.07, y, heading(t).replace("✅ ", "").replace("❌ ", "").replace("⚪ ", ""), fontsize=8.5, color=res_of(t)[3])
             y -= 0.017
         pdf.savefig(fig); plt.close(fig)
         for t, (p1, p2) in newest_first(made):
             fig = plt.figure(figsize=(8.27, 11.69))
-            fig.text(0.05, 0.965, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=13, weight="bold",
-                     color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
+            fig.text(0.05, 0.965, heading(t).replace("✅ ", "").replace("❌ ", "").replace("⚪ ", ""), fontsize=13, weight="bold",
+                     color=res_of(t)[3])
             fig.text(0.05, 0.945, trade_line(t), fontsize=9.5, color="#555555")
             img = [plt.imread(p) for p in (p1, p2)]
             h = 0.96 * 8.27 * img[0].shape[0] / img[0].shape[1] / 11.69  # page fraction one full-width chart needs
@@ -319,13 +324,13 @@ def write_html(path, label, wbp, made):
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
     num = lambda v: "" if v is None else f"{v}"
-    attrs = lambda t: (f'data-res="{"tp" if t["Outcome"] == "TP" else "sl"}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
+    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
                        f'data-dir="{h.escape(t["Direction"])}"')
     side = "".join(
-        f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}" {attrs(t)}>'
+        f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
-        f'<span>{"Win" if t["Outcome"] == "TP" else "Loss"} · {h.escape(t["Direction"])}'
+        f'<span>{res_of(t)[2]} · {h.escape(t["Direction"])}'
         + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in newest_first(made))
     def values(f):
         order = {"Taken": 0, "Filtered": 1, "Missed": 2, "A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5, "Ungraded": 9}
@@ -354,7 +359,7 @@ def write_html(path, label, wbp, made):
                 % (heads, "".join(cells), note))
 
     body = "".join(
-        f'<section id="{anchor(t)}" {attrs(t)}><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
+        f'<section id="{anchor(t)}" {attrs(t)}><h2 class="{res_of(t)[0]}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
         f'{fact_table(t)}'
         f'<a class="ent" href="{rel(p1)}"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
         f'<a class="fol" href="{rel(p2)}"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in newest_first(made))
@@ -368,7 +373,7 @@ nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;m
 .btns button i{font-style:normal;color:#999;font-size:11px} .btns button.on{background:#222;color:#fff;border-color:#222} .btns button.on i{color:#ccc}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
-nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828}
+nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828} nav a.be{border-left-color:#9e9e9e} nav a.be span{color:#616161}
 nav a:hover{background:#eee} nav a.active{background:#e3f2fd}
 main{margin-left:230px;padding:0 28px 24px;max-width:1300px}
 header.top{position:sticky;top:0;z-index:10;background:#fff;padding:14px 0 10px;border-bottom:1px solid #e5e5e5}
@@ -381,14 +386,14 @@ header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
 .stats tr:first-child th{font-size:10.5px;color:#888;font-weight:400} .stats th:first-child{text-align:left;color:#555;font-weight:600}
 .stats tr:nth-child(2){font-weight:700}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
-section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
+section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828} .be{color:#616161}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
 body.img-ent a.fol, body.img-fol a.ent{display:none}
 main section a.ent, main section a.fol{cursor:zoom-in}
 #lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(30,30,30,.85);align-items:center;justify-content:center;cursor:zoom-out}
 #lb.open{display:flex} #lb img{max-width:95vw;max-height:95vh;width:auto;height:auto;margin:0;border:0;object-fit:contain;background:#fff;
   box-sizing:border-box;border-radius:10px;border-left:6px solid transparent;box-shadow:0 6px 30px rgba(0,0,0,.45);cursor:default}
-#lb img.tp{border-left-color:#43a047} #lb img.sl{border-left-color:#e53935}
+#lb img.tp{border-left-color:#43a047} #lb img.sl{border-left-color:#e53935} #lb img.be{border-left-color:#9e9e9e}
 .lbnav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;border-radius:6px;background:rgba(0,0,0,.45);
   color:#fff;font-size:38px;line-height:60px;cursor:pointer;z-index:101} .lbnav:hover{background:rgba(0,0,0,.7)} .lbnav:disabled{opacity:.2;cursor:default}
 #lbprev{left:6px} #lbnext{right:6px}
@@ -411,11 +416,12 @@ const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).s
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
 const sel={res:new Set(),dec:new Set(),grade:new Set()}, secs=[...document.querySelectorAll('main section')];
-function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
+const hasBE=secs.some(s=>s.dataset.res==='be');
+function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,l=list.filter(s=>s.dataset.res==='sl').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
   avg=a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):'–',r=num('r').reduce((x,y)=>x+y,0);
-  return `<tr><th>${name}</th><td>${n}</td><td class="tp">${w}</td><td class="sl">${n-w}</td><td>${n?Math.round(100*w/n)+'%':'–'}</td>`
+  return `<tr><th>${name}</th><td>${n}</td><td class="tp">${w}</td><td class="sl">${l}</td>${hasBE?`<td class="be">${n-w-l}</td>`:''}<td>${n?Math.round(100*w/n)+'%':'–'}</td>`
     +`<td class="${r>=0?'tp':'sl'}">${n?(r>=0?'+':'')+r.toFixed(1)+'R':'–'}</td><td>${avg(num('mae'))}</td><td>${avg(num('mfe'))}</td></tr>`}
-function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th><th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
+function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th>'+(hasBE?'<th>BE</th>':'')+'<th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
   +row('All',list)+row('Long',list.filter(s=>s.dataset.dir==='Long'))+row('Short',list.filter(s=>s.dataset.dir==='Short'))+'</table>'}
 function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]));
   links.forEach(a=>a.style.display=ok(a)?'':'none');
@@ -461,7 +467,7 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 <main><header class="top"><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <div class="bar"><div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
 <div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
-{group("Outcome", "res", [("tp", "Win", sum(t["Outcome"] == "TP" for t, _ in made)), ("sl", "Loss", sum(t["Outcome"] != "TP" for t, _ in made))])}
+{group("Outcome", "res", [(c, w, n) for c, w, n in ((c, w, sum(res_of(t)[0] == c for t, _ in made)) for c, _, w, _ in OUTCOMES.values()) if n or c != "be"])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
@@ -503,7 +509,7 @@ def write_note(note, label, wbp, made, style):
     links = tv_links(wbp)
     cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
     for t, (p1, p2) in newest_first(made):
-        d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
+        d = t["Entry time"]; res = res_of(t)[1]
         L += [f"### {d:%a} {d.day} {d:%b} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}", "",
               f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
               + (f" · MAE {t['MAE pts']:.1f}" if t.get("MAE pts") is not None else "") + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""), "",

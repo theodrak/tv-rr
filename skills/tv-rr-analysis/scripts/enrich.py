@@ -294,7 +294,7 @@ def breakdown(wb, records):
     from openpyxl.styles import Font, PatternFill, Alignment
     if "Breakdown" in wb.sheetnames: del wb["Breakdown"]
     ws = wb.create_sheet("Breakdown")
-    planned = lambda v, o: {"TP": "Win", "Stop": "Loss", "Both in one candle": "Loss", "Open": "Open"}.get(v.get("Outcome"))
+    planned = lambda v, o: {"TP": "Win", "Stop": "Loss", "Both in one candle": "Loss", "Open": "Open", "BE": "BE"}.get(v.get("Outcome"))
     variants = [("Planned (your stop and TP)", planned, lambda v: (v.get("Reward pts"), v.get("Risk pts")))]
     variants.append(("1/2 stop (same TP)", lambda v, o: o["1/2 stop"],
                      lambda v: (v.get("Reward pts"), (v.get("Risk pts") or 0) / 2 or None)))

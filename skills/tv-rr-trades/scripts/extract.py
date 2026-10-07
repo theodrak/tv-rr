@@ -37,7 +37,7 @@ TIME_COLS = ("Entry time", "Fill time", "Exit time", "TradingView exit", "Checke
 USER_COLS = ("Confirmed outcome",)
 # Filled in by the user and kept whatever happens to the drawing (a TradingView chart link: a URL, or a link with text)
 KEEP_COLS = ("TV chart",)
-CONFIRM_CHOICES = ["TP", "Stop", "Not filled", "Open"]
+CONFIRM_CHOICES = ["TP", "Stop", "BE", "Not filled", "Open"]
 
 
 def local(t):
@@ -228,6 +228,27 @@ def check_with_prices(r):
     return r
 
 
+BE_AT = 0.55  # the stop goes to the entry once price is this far to the TP (tv-rr-analysis enrich.BE_AT, its "BE at 55%" what-if)
+
+
+def be_exit(r):
+    """(local exit time, how it was found) for a trade closed at break-even: the first candle (1m where it covers the
+    trade) that traded back at the entry after price had gone BE_AT of the way to the TP. If price never got that far,
+    the first return to the entry after the fill candle. (None, …) if price never came back."""
+    if r.get("Entry") is None or r.get("TP planned") is None or not r.get("Fill time"): return None, None
+    t_fill = int(r["Fill time"].replace(tzinfo=TZ).timestamp())
+    bars, _ = bars_for(r["Symbol"], t_fill)
+    if not bars or len(bars) < 2: return None, None
+    sec = bars[1]["t"] - bars[0]["t"]; e, tp = r["Entry"], r["TP planned"]
+    after = prices.since(bars, t_fill - t_fill % sec, after=True)
+    trig = e + BE_AT * (tp - e)
+    k = next((n for n, b in enumerate(after) if (b["h"] >= trig if tp > e else b["l"] <= trig)), None)
+    how = f"after price reached {BE_AT:.0%} of the way to the TP"
+    if k is None: k, how = -1, f"price never got {BE_AT:.0%} of the way to the TP: first return to the entry after the fill"
+    nxt = next((b for b in after[k + 1:] if b["l"] <= e <= b["h"]), None)
+    return (local(nxt["t"]), how) if nxt else (None, how)
+
+
 def apply_confirmation(r):
     """Flag results that still need the user's eye. Checked on 1m prices: only a call decided inside one 1m candle, or
     a disagreement with TradingView. Checked on coarser bars (no 1m coverage): anything the script worked out itself. A confirmed
@@ -246,6 +267,14 @@ def apply_confirmation(r):
     if m and m.group(1) != "1m": reasons.append(f"decided inside one {m.group(1)} candle")
     if tv in ("TP", "Stop") and out in ("TP", "Stop", "Both in one candle") and out != tv: reasons.append(f"TradingView says {tv}")
     conf = r.get("Confirmed outcome")
+    if conf == "BE":  # the stop was moved to the entry and price came back to it: 0 pts, out at the first return
+        tp_exit = r.get("Exit time") if r.get("Outcome") == "TP" else None
+        bx, how = be_exit(r)
+        r.update({"Outcome": "BE", "Result pts": 0.0, "Result R": 0.0, "Exit price": r.get("Entry"), "Exit time": bx,
+                  "Check": "✓ confirmed"})
+        if bx is None or (tp_exit and bx > tp_exit): how = "price didn't come back to the entry before the TP: check the BE"
+        r["Note"] = "; ".join(x for x in (r.get("Note"), how and f"BE exit {how}") if x)
+        return r
     if conf:
         if conf != r.get("Outcome"): r["Exit time"] = None  # the computed exit time was for a different outcome
         r["Outcome"] = conf
@@ -317,7 +346,7 @@ def save(path, rows):
     dv = DataValidation(type="list", formula1='"' + ",".join(CONFIRM_CHOICES) + '"', allow_blank=True,
                         promptTitle="Confirm the outcome", prompt="Pick what really happened; leave blank to keep the computed result.")
     ws.add_data_validation(dv)
-    fills = {"TP": "C8E6C9", "Stop": "FFCDD2", "Not closed": "E0E0E0", "Not filled": "E0E0E0", "Open": "BBDEFB",
+    fills = {"TP": "C8E6C9", "Stop": "FFCDD2", "BE": "FFE0B2", "Not closed": "E0E0E0", "Not filled": "E0E0E0", "Open": "BBDEFB",
              "Closed (other)": "FFF9C4", "Both in one candle": "FFF9C4"}
     for r in rows:
         r["Chart"] = None  # links to the gallery, re-made by tv-rr-analysis after every save
