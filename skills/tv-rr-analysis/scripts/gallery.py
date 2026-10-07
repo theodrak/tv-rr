@@ -314,7 +314,9 @@ def write_html(path, label, wbp, made):
     syms = len({t["Symbol"] for t, _ in made}) > 1
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
-    attrs = lambda t: f'data-res="{"tp" if t["Outcome"] == "TP" else "sl"}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}"'
+    num = lambda v: "" if v is None else f"{v}"
+    attrs = lambda t: (f'data-res="{"tp" if t["Outcome"] == "TP" else "sl"}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
+                       f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}"')
     side = "".join(
         f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
@@ -355,17 +357,25 @@ def write_html(path, label, wbp, made):
 *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#222;background:#fff}
 nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-right:1px solid #e5e5e5;background:#fafafa;padding:12px 8px}
 nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;margin:4px 8px 8px}
-nav h3 button{float:right;font:11px inherit;text-transform:none;letter-spacing:0;padding:1px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
-nav .grp{margin:0 6px 8px} nav .gt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin:0 2px 3px}
-nav .btns{display:flex;flex-wrap:wrap;gap:4px} nav .btns button{font:12px inherit;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
-nav .btns button i{font-style:normal;color:#999;font-size:11px} nav .btns button.on{background:#222;color:#fff;border-color:#222} nav .btns button.on i{color:#ccc}
+#clear{float:right;float:right;font:11px inherit;text-transform:none;letter-spacing:0;padding:1px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+.grp{} .gt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin:0 2px 3px}
+.btns{display:flex;flex-wrap:wrap;gap:4px} .btns button{font:12px inherit;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+.btns button i{font-style:normal;color:#999;font-size:11px} .btns button.on{background:#222;color:#fff;border-color:#222} .btns button.on i{color:#ccc}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
 nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828}
 nav a:hover{background:#eee} nav a.active{background:#e3f2fd}
-main{margin-left:230px;padding:24px 28px;max-width:1300px}
+main{margin-left:230px;padding:0 28px 24px;max-width:1300px}
+header.top{position:sticky;top:0;z-index:10;background:#fff;padding:14px 0 10px;border-bottom:1px solid #e5e5e5}
+header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
+.bar{display:flex;gap:10px;align-items:stretch} .blk{border:1px solid #e5e5e5;border-radius:6px;padding:6px 10px;background:#fafafa}
+.blk.filters{flex:2 1 auto} .blk:not(.filters){flex:1 1 0}
+.bt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+.grps{display:flex;flex-wrap:wrap;gap:4px 14px}
+.stats{display:flex;flex-wrap:wrap;gap:2px 12px} .stats div{display:flex;flex-direction:column} .stats span{font-size:10.5px;color:#888}
+.stats b{font-size:15px}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
-section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:8px} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
+section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
 table.facts{margin:6px 0 8px;font-size:12.5px;width:100%} table.facts th{background:#f5f5f5;font-weight:600;white-space:nowrap;padding:3px 6px}
 table.facts td{padding:3px 6px} td.rw{background:#e8f5e9;color:#2e7d32;font-weight:600} td.rl{background:#ffebee;color:#c62828;font-weight:600}
@@ -373,7 +383,7 @@ td.rb{background:#fff8e1;color:#a66b00;font-weight:600}
 .scroll{overflow-x:auto} .notes{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 16px;font-size:12.5px;margin:0 0 8px;color:#333}
 .notes b{display:block;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em}
 @media (max-width:800px){.notes{grid-template-columns:1fr}}
-@media (max-width:800px){nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
+@media (max-width:800px){.bar{flex-direction:column} header.top{position:static} nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
 """
     js = """
 const links=[...document.querySelectorAll('nav a')], byId=Object.fromEntries(links.map(a=>[a.hash.slice(1),a]));
@@ -382,24 +392,36 @@ function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id))
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
-const sel={res:new Set(),dec:new Set(),grade:new Set()};
+const sel={res:new Set(),dec:new Set(),grade:new Set()}, secs=[...document.querySelectorAll('main section')];
+function stats(list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
+  avg=a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):'–',r=num('r').reduce((x,y)=>x+y,0);
+  const cell=(k,v,c)=>`<div><span>${k}</span><b class="${c||''}">${v}</b></div>`;
+  return cell('Trades',n)+cell('Won',w,'tp')+cell('Lost',n-w,'sl')+cell('Win %',n?Math.round(100*w/n)+'%':'–')
+    +cell('Net R',(r>=0?'+':'')+r.toFixed(1)+'R',r>=0?'tp':'sl')+cell('Avg MAE',avg(num('mae')))+cell('Avg MFE',avg(num('mfe')))}
 function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]));
   links.forEach(a=>a.style.display=ok(a)?'':'none');
-  let n=0;document.querySelectorAll('main section').forEach(s=>{const v=ok(s);s.style.display=v?'':'none';if(v)n++});
-  document.getElementById('shown').textContent=n}
-document.querySelectorAll('nav .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
+  const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
+  document.getElementById('shown').textContent=shown.length;document.getElementById('fstats').innerHTML=stats(shown)}
+document.getElementById('ostats').innerHTML=stats(secs);
+document.querySelectorAll('header .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
   if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
 document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear());
-  document.querySelectorAll('nav .grp button').forEach(b=>b.classList.remove('on'));apply()};
+  document.querySelectorAll('header .grp button').forEach(b=>b.classList.remove('on'));apply()};
+apply();
+function hh(){document.documentElement.style.setProperty('--hh',document.querySelector('header.top').offsetHeight+'px')}
+hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
 """
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
-<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades <button id="clear">Clear</button></h3>
+<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3>{side}</nav>
+<main><header class="top"><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
+<div class="bar"><div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
 {group("Outcome", "res", [("tp", "Win", sum(t["Outcome"] == "TP" for t, _ in made)), ("sl", "Loss", sum(t["Outcome"] != "TP" for t, _ in made))])}
-{group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}{side}</nav>
-<main><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
+{group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}</div></div>
+<div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
+<div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
 {body}</main><script>{js}</script></body></html>""")
