@@ -356,8 +356,8 @@ def write_html(path, label, wbp, made):
     body = "".join(
         f'<section id="{anchor(t)}" {attrs(t)}><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
         f'{fact_table(t)}'
-        f'<a class="ent" href="{rel(p1)}" target="_blank"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
-        f'<a class="fol" href="{rel(p2)}" target="_blank"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in newest_first(made))
+        f'<a class="ent" href="{rel(p1)}"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
+        f'<a class="fol" href="{rel(p2)}"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in newest_first(made))
     css = """
 *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#222;background:#fff}
 nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-right:1px solid #e5e5e5;background:#fafafa;padding:12px 8px}
@@ -384,6 +384,11 @@ h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0
 section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
 body.img-ent a.fol, body.img-fol a.ent{display:none}
+main section a.ent, main section a.fol{cursor:zoom-in}
+#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(15,15,15,.97);align-items:center;justify-content:center}
+#lb.open{display:flex} #lb img{max-width:100vw;max-height:100vh;width:auto;height:auto;margin:0;border:0;object-fit:contain;background:#fff}
+#lbx{position:fixed;top:12px;right:16px;width:42px;height:42px;border:0;border-radius:50%;background:#e53935;color:#fff;
+  font-size:22px;line-height:42px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4);z-index:101} #lbx:hover{background:#c62828}
 table.facts{margin:6px 0 8px;font-size:12.5px;width:100%} table.facts th{background:#f5f5f5;font-weight:600;white-space:nowrap;padding:3px 6px}
 table.facts td{padding:3px 6px} td.rw{background:#e8f5e9;color:#2e7d32;font-weight:600} td.rl{background:#ffebee;color:#c62828;font-weight:600}
 td.rb{background:#fff8e1;color:#a66b00;font-weight:600}
@@ -419,6 +424,13 @@ apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
   document.querySelectorAll('header button[data-img]').forEach(x=>x.classList.toggle('on',x===b));
   document.body.classList.remove('img-ent','img-fol'); if(b.dataset.img!=='both')document.body.classList.add('img-'+b.dataset.img);hh()});
+// clicking a chart shows it full window; the red cross, a double-click or Escape closes it
+const lb=document.getElementById('lb'), lbimg=document.getElementById('lbimg');
+function closeLb(){lb.classList.remove('open');lbimg.removeAttribute('src');document.body.style.overflow=''}
+document.querySelectorAll('main section a.ent, main section a.fol').forEach(a=>a.onclick=e=>{e.preventDefault();
+  lbimg.src=a.getAttribute('href');lbimg.alt=a.querySelector('img').alt;lb.classList.add('open');document.body.style.overflow='hidden'});
+document.getElementById('lbx').onclick=closeLb; lb.ondblclick=closeLb;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&lb.classList.contains('open'))closeLb()});
 function hh(){document.documentElement.style.setProperty('--hh',document.querySelector('header.top').offsetHeight+'px')}
 hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
@@ -434,8 +446,9 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
-<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
-{body}</main><script>{js}</script></body></html>""")
+<p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to see it full window (close with the red cross, a double-click or Escape).</p>
+{body}</main><div id="lb" role="dialog" aria-modal="true" aria-label="Chart"><button id="lbx" aria-label="Close">&#x2715;</button><img id="lbimg" alt=""></div>
+<script>{js}</script></body></html>""")
     from enrich import OFFICE_CONTAINER, jump_dir
     d = jump_dir(path); d.mkdir(parents=True, exist_ok=True); absolute = OFFICE_CONTAINER in d.parents
     for old in d.glob("*.html"): old.unlink()
