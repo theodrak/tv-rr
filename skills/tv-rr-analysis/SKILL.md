@@ -71,7 +71,7 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **MAE**, **MFE**, **Decision** and **Grade**;
 - the **TV chart** link (the cell's hyperlink target).
 
-The **Filter, Grade and General notes** go on their own line below. The HTML sidebar filters by **Wins/Losses**, **Decision** and **Grade** together, and counts the trades shown.
+The **Filter, Grade and General notes** go on their own line below. The HTML sidebar has toggle buttons for **Outcome**, **Decision** and **Grade**: several in one group show trades matching any of them (OR), the groups combine (AND), **Clear** resets, and the header counts the trades shown.
 
 **Chart links in the workbook.** With `html`, every trade gets a **Chart** column in the workbook: "Open chart" jumps straight to that trade in the gallery.
 - **Each trade's section is anchored** on its symbol and TradingView drawing id. A one-line jump page per trade redirects to the anchor, because Excel strips `#anchors` (and `?queries`) from links to local files.

@@ -320,11 +320,15 @@ def write_html(path, label, wbp, made):
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
         f'<span>{"Win" if t["Outcome"] == "TP" else "Loss"} · {h.escape(t["Direction"])}'
         + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in made)
-    def opts(f):
+    def values(f):
         order = {"Taken": 0, "Filtered": 1, "Missed": 2, "A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5, "Ungraded": 9}
         vals = sorted({f(t) for t, _ in made}, key=lambda v: (order.get(v, 8), v))
-        return '<option value="all">All</option>' + "".join(
-            f'<option value="{h.escape(v)}">{h.escape(v)} ({sum(f(t) == v for t, _ in made)})</option>' for v in vals)
+        return [(v, v, sum(f(t) == v for t, _ in made)) for v in vals]
+
+    def group(title, key, items):
+        """A row of toggle buttons: several in one group show trades matching any of them (OR); the groups combine (AND)."""
+        btns = "".join(f'<button data-g="{key}" data-v="{h.escape(v)}">{h.escape(lbl)} <i>{n}</i></button>' for v, lbl, n in items)
+        return f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns">{btns}</div></div>'
 
     def dims(p):
         import struct
@@ -351,10 +355,10 @@ def write_html(path, label, wbp, made):
 *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#222;background:#fff}
 nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-right:1px solid #e5e5e5;background:#fafafa;padding:12px 8px}
 nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;margin:4px 8px 8px}
-nav .filter{display:flex;gap:4px;margin:0 6px 8px} nav .filter button{flex:1;font:12px inherit;padding:3px 0;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
-nav .filter button.on{background:#222;color:#fff;border-color:#222}
-nav .pick{display:flex;gap:6px;margin:0 6px 10px} nav .pick label{flex:1;font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em}
-nav .pick select{display:block;width:100%;margin-top:2px;font:12px inherit;padding:2px;border:1px solid #ddd;border-radius:4px;background:#fff;text-transform:none}
+nav h3 button{float:right;font:11px inherit;text-transform:none;letter-spacing:0;padding:1px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+nav .grp{margin:0 6px 8px} nav .gt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin:0 2px 3px}
+nav .btns{display:flex;flex-wrap:wrap;gap:4px} nav .btns button{font:12px inherit;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+nav .btns button i{font-style:normal;color:#999;font-size:11px} nav .btns button.on{background:#222;color:#fff;border-color:#222} nav .btns button.on i{color:#ccc}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
 nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828}
@@ -378,21 +382,23 @@ function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id))
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
-let res='all';
-function apply(){const d=document.getElementById('dec').value,g=document.getElementById('grade').value;
-  const ok=e=>(res==='all'||e.dataset.res===res)&&(d==='all'||e.dataset.dec===d)&&(g==='all'||e.dataset.grade===g);
+const sel={res:new Set(),dec:new Set(),grade:new Set()};
+function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]));
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   let n=0;document.querySelectorAll('main section').forEach(s=>{const v=ok(s);s.style.display=v?'':'none';if(v)n++});
   document.getElementById('shown').textContent=n}
-document.querySelectorAll('nav .filter button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav .filter button').forEach(x=>x.classList.toggle('on',x===b));res=b.dataset.f;apply()});
-document.getElementById('dec').onchange=apply; document.getElementById('grade').onchange=apply;
+document.querySelectorAll('nav .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
+  if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
+document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear());
+  document.querySelectorAll('nav .grp button').forEach(b=>b.classList.remove('on'));apply()};
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
 """
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
-<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3><div class="filter"><button class="on" data-f="all">All</button><button data-f="tp">Wins</button><button data-f="sl">Losses</button></div>
-<div class="pick"><label>Decision<select id="dec">{opts(dec)}</select></label><label>Grade<select id="grade">{opts(grade)}</select></label></div>{side}</nav>
+<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades <button id="clear">Clear</button></h3>
+{group("Outcome", "res", [("tp", "Win", sum(t["Outcome"] == "TP" for t, _ in made)), ("sl", "Loss", sum(t["Outcome"] != "TP" for t, _ in made))])}
+{group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}{side}</nav>
 <main><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
