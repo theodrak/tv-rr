@@ -75,6 +75,8 @@ AUTO_NOTES = [
     "Distance: how close to the entry a level must be, at or behind it (on the stop side), to count as a confluence.",
     "Unit: pts = price units (DAX 10 = 10 points); pips = 10 ticks (EURUSD 10 = 0.0010). Leave Distance blank to switch auto-fill off.",
     "Levels: VWAP, SMA <length>, EMA <length> (on the stored 5m bars), Previous day high, Previous day low. Add rows for other lengths.",
+    "Indicator <plot name>: any column stored from your exports (e.g. Indicator PDH), its value at the last candle before the entry.",
+    "Prior VAH / Prior VAL / Prior POC: the previous session's value area; needs the symbol's value_area setting (config.py symbol SYM value_area).",
     "Name: what goes in the Confluence columns; match it to your Confluence list so the dropdown and the Rule grade agree.",
 ]
 
@@ -163,7 +165,12 @@ def auto_settings(wb, symbol):
         lv, on, name = r
         if not lv or str(on or "").strip().lower() not in ("yes", "y", "on", "true"): continue
         m = re.fullmatch(r"\s*(SMA|EMA)\s*(\d+)\s*", str(lv), re.I)
-        kind = (m.group(1).upper(), int(m.group(2))) if m else (str(lv).strip().lower(), None)
+        mi = re.fullmatch(r"\s*indicator\s+(.+?)\s*", str(lv), re.I)
+        mv = re.fullmatch(r"\s*prior\s+(VAH|VAL|POC)\s*", str(lv), re.I)
+        if m: kind = (m.group(1).upper(), int(m.group(2)))
+        elif mi: kind = ("indicator", mi.group(1))           # a stored export column, by its plot name
+        elif mv: kind = ("prior va", mv.group(1).upper())    # the previous session's value area
+        else: kind = (str(lv).strip().lower(), None)
         levels.append((kind[0], kind[1], str(name or lv).strip()))
     return dist * size, unit, size, levels
 

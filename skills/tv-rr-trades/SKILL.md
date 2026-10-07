@@ -80,7 +80,10 @@ next to a Backtest file). Without `--from`, the lists start with a few generic e
 - **Lists sheet:** the dropdown choices. Column A is filter reasons, B is grade reasons (each starts with `+` or `-`), C is confluences. The user edits them in Excel. Column E is a guide the script rewrites.
 - **Auto confluence sheet:** controls which levels are filled in automatically.
   - **Distance** and **Unit**: `pts` means price units; `pips` means 10 ticks, as on 5-decimal FX quotes. Ask the user for both, in their own terms. Never use ATR, because a moving yardstick can't be read back.
-  - **Level rows:** VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low, each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list.
+  - **Level rows:** each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list:
+    - VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low;
+    - **`Indicator <plot name>`**: any column stored from their exports (e.g. `Indicator PDH`), read at the last candle before the entry;
+    - **`Prior VAH` / `Prior VAL` / `Prior POC`**: the previous session's value area. This needs the symbol setting `value_area`, e.g. `config.py symbol OANDA:DE30EUR value_area '{"session": "09:00-17:35 Europe/Berlin", "step": 5}'`. It matches de30-open-review's pVAH/pVAL/pPOC exactly (70 sessions checked).
   - **A blank Distance** switches auto-fill off.
 - **Columns:**
   - **Decision:** **Taken** by default for every trade added, or Filtered or Missed. Taken with filter reasons means the user took it because something outweighed them, noted in Filter notes.

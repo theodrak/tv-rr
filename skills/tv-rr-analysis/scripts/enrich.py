@@ -221,6 +221,12 @@ def enrich(path):
                 elif kind in ("previous day high", "previous day low"):
                     hl = indicators.prior_day_hl(v["Symbol"], t0)
                     levels[name] = (hl[0] if kind.endswith("high") else hl[1]) if hl else None
+                elif kind == "indicator":
+                    tf = v.get("Timeframe"); tf = int(str(tf).rstrip("mM")) if str(tf or "").rstrip("mM").isdigit() else None
+                    levels[name] = prices.indicators_at(v["Symbol"], t0, tf)[1].get(n)
+                elif kind == "prior va":
+                    pva = indicators.prior_value_area(v["Symbol"], t0)
+                    levels[name] = dict(zip(("POC", "VAH", "VAL"), pva)).get(n) if pva else None
             text, slots = journal.auto_confluence(v, levels, dist, unit, size)
             ws.cell(i, col["Auto confluence"], text)
             for c, x in zip(journal.CONFS, slots): ws.cell(i, col[c], x); v[c] = x

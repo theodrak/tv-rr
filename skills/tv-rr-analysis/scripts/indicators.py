@@ -158,6 +158,44 @@ def prior_day_hl(sym, t):
     return (max(b["h"] for b in day), min(b["l"] for b in day)) if day else None
 
 
+def prior_value_area(sym, t):
+    """(POC, VAH, VAL) of the previous session before t, or None. The session comes from the symbol's config
+    value_area {"session": "09:00-17:35 Europe/Berlin", "step": 5}: its 5m bars (exports and MCP; volume, or 1 where a
+    bar has none), each bar's volume spread over the rows it spans, the POC the busiest row (its middle), the value area
+    70% of the volume grown one row at a time towards the bigger neighbour. VAH is the top of its top row, VAL the bottom
+    of its bottom row (as de30-open-review's profile). The previous session is the latest one on an earlier date, in
+    the session's own time zone, than t."""
+    import math
+    import numpy as np
+    from zoneinfo import ZoneInfo
+    va = config.symbol(sym).get("value_area")
+    if not va: return None
+    k = ("pva", sym, t)
+    if k in _cache: return _cache[k]
+    (a_hm, b_hm), zone = va["session"].split()[0].split("-"), ZoneInfo(va["session"].split()[1])
+    step = float(va.get("step", 5)); bars = prices.load(sym, 5, built=False) or []
+    if not bars: return None
+    ts = [b["t"] for b in bars]; day = dt.datetime.fromtimestamp(t, zone).date(); res = None
+    for back in range(1, 8):
+        d = day - dt.timedelta(days=back)
+        at_ = lambda hm: int(dt.datetime.combine(d, dt.time(*map(int, hm.split(":"))), zone).timestamp())
+        win = bars[bisect.bisect_left(ts, at_(a_hm)):bisect.bisect_left(ts, at_(b_hm))]
+        if not win: continue
+        lo = math.floor(min(b["l"] for b in win) / step) * step; hi = math.ceil(max(b["h"] for b in win) / step) * step
+        edges = np.arange(lo, hi + step, step); vol = np.zeros(len(edges))
+        for b in win:
+            i0, i1 = int((b["l"] - lo) // step), int((b["h"] - lo) // step); w = b.get("v") or 1.0
+            vol[i0:i1 + 1] += w / (i1 - i0 + 1)
+        poc = int(np.argmax(vol)); acc, lo_i, hi_i = vol[poc], poc, poc
+        while acc < 0.7 * vol.sum():
+            up = vol[hi_i + 1] if hi_i + 1 < len(vol) else -1; dn = vol[lo_i - 1] if lo_i - 1 >= 0 else -1
+            if up >= dn: hi_i += 1; acc += up
+            else: lo_i -= 1; acc += dn
+        res = (float(edges[poc] + step / 2), float(edges[hi_i] + step), float(edges[lo_i])); break
+    _cache[k] = res
+    return res
+
+
 def vwap_recent(sym, t, minutes=10, steps=2):
     """VWAP at the last bar closed by t and then every `minutes` before it, `steps` times, all in the same session:
     [now, `minutes` ago, 2×`minutes` ago, …]. Entries that would fall before the session start are None."""
