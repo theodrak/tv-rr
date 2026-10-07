@@ -72,9 +72,9 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - the **TV chart** link (the cell's hyperlink target).
 
 The **Filter, Grade and General notes** go on their own line below. The HTML page keeps a fixed bar at the top with three blocks:
-- **All trades:** trades, won, lost, win %, net R, average MAE and MFE, kept on one line.
+- **All trades:** rows for All, Long and Short: trades, won, lost, win %, net R, average MAE and MFE. They replace the summary table that used to sit under the title in the HTML page.
 - **Filters:** toggle buttons for **Outcome**, **Decision** and **Grade**. Several in one group show trades matching any of them (OR), the groups combine (AND), and **Clear** resets. An **Images** choice (Entry only / Exit only / Both, default Both) shows the at-entry charts, the follow-through charts or both.
-- **Filtered:** the same figures as All trades, for the trades shown, updated with every click.
+- **Filtered:** the same rows for the trades shown, updated with every click.
 
 Every page lists the trades newest first.
 

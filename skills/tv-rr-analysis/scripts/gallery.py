@@ -315,13 +315,13 @@ def write_html(path, label, wbp, made):
     import html as h, os
     first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
-    rows = "".join("<tr>" + "".join(f"<td>{h.escape(str(c))}</td>" for c in r) + "</tr>" for r in summary(made))
     syms = len({t["Symbol"] for t, _ in made}) > 1
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
     num = lambda v: "" if v is None else f"{v}"
     attrs = lambda t: (f'data-res="{"tp" if t["Outcome"] == "TP" else "sl"}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
-                       f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}"')
+                       f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
+                       f'data-dir="{h.escape(t["Direction"])}"')
     side = "".join(
         f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
@@ -377,8 +377,9 @@ header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
 .blk.filters{flex:1 1 auto;min-width:0} .blk:not(.filters){flex:0 0 auto}
 .bt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
 .grps{display:flex;flex-wrap:wrap;gap:4px 14px}
-.stats{display:flex;flex-wrap:nowrap;gap:12px;white-space:nowrap} .stats div{display:flex;flex-direction:column} .stats span{font-size:10.5px;color:#888}
-.stats b{font-size:15px}
+.stats table{border-collapse:collapse;margin:0;white-space:nowrap;font-size:12.5px} .stats th,.stats td{border:0;padding:1px 6px;text-align:right}
+.stats tr:first-child th{font-size:10.5px;color:#888;font-weight:400} .stats th:first-child{text-align:left;color:#555;font-weight:600}
+.stats tr:nth-child(2){font-weight:700}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
 section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
@@ -399,11 +400,12 @@ const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).s
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
 const sel={res:new Set(),dec:new Set(),grade:new Set()}, secs=[...document.querySelectorAll('main section')];
-function stats(list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
+function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
   avg=a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):'–',r=num('r').reduce((x,y)=>x+y,0);
-  const cell=(k,v,c)=>`<div><span>${k}</span><b class="${c||''}">${v}</b></div>`;
-  return cell('Trades',n)+cell('Won',w,'tp')+cell('Lost',n-w,'sl')+cell('Win %',n?Math.round(100*w/n)+'%':'–')
-    +cell('Net R',(r>=0?'+':'')+r.toFixed(1)+'R',r>=0?'tp':'sl')+cell('Avg MAE',avg(num('mae')))+cell('Avg MFE',avg(num('mfe')))}
+  return `<tr><th>${name}</th><td>${n}</td><td class="tp">${w}</td><td class="sl">${n-w}</td><td>${n?Math.round(100*w/n)+'%':'–'}</td>`
+    +`<td class="${r>=0?'tp':'sl'}">${n?(r>=0?'+':'')+r.toFixed(1)+'R':'–'}</td><td>${avg(num('mae'))}</td><td>${avg(num('mfe'))}</td></tr>`}
+function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th><th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
+  +row('All',list)+row('Long',list.filter(s=>s.dataset.dir==='Long'))+row('Short',list.filter(s=>s.dataset.dir==='Short'))+'</table>'}
 function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]));
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
@@ -432,7 +434,6 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
-<table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
 {body}</main><script>{js}</script></body></html>""")
     from enrich import OFFICE_CONTAINER, jump_dir
