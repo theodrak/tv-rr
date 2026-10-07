@@ -385,7 +385,7 @@ section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
 body.img-ent a.fol, body.img-fol a.ent{display:none}
 main section a.ent, main section a.fol{cursor:zoom-in}
-#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(60,60,60,.72);align-items:center;justify-content:center;cursor:zoom-out}
+#lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(30,30,30,.85);align-items:center;justify-content:center;cursor:zoom-out}
 #lb.open{display:flex} #lb img{max-width:95vw;max-height:95vh;width:auto;height:auto;margin:0;border:0;object-fit:contain;background:#fff;
   box-shadow:0 6px 30px rgba(0,0,0,.45);cursor:default}
 .lbnav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:64px;border:0;border-radius:6px;background:rgba(0,0,0,.45);
@@ -438,10 +438,10 @@ const shownCharts=()=>[...document.querySelectorAll('main section a.ent, main se
 function showAt(i){if(i<0||i>=lbList.length)return; lbAt=i; const a=lbList[i], sec=a.closest('section');
   lbimg.src=a.getAttribute('href'); lbimg.alt=a.querySelector('img').alt;
   lbcap.textContent=`${i+1} / ${lbList.length} · ${sec.querySelector('h2').textContent} · ${a.classList.contains('ent')?'at entry':'follow-through'}`;
-  document.getElementById('lbprev').disabled=i===0; document.getElementById('lbnext').disabled=i===lbList.length-1}
+  document.getElementById('lbprev').disabled=i===0; document.getElementById('lbnext').disabled=i===lbList.length-1;
+  sec.scrollIntoView({behavior:'instant',block:'start'}); if(sec.id)mark(sec.id)}
 function openLb(a){lbList=shownCharts(); showAt(lbList.indexOf(a)); lb.classList.add('open'); document.body.style.overflow='hidden'}
-function closeLb(){if(lbAt>=0&&lbList[lbAt])lbList[lbAt].closest('section').scrollIntoView({block:'start'});
-  lb.classList.remove('open'); lbimg.removeAttribute('src'); document.body.style.overflow=''; lbAt=-1}
+function closeLb(){lb.classList.remove('open'); lbimg.removeAttribute('src'); document.body.style.overflow=''; lbAt=-1}
 document.querySelectorAll('main section a.ent, main section a.fol').forEach(a=>a.onclick=e=>{e.preventDefault(); openLb(a)});
 document.getElementById('lbx').onclick=closeLb; lb.ondblclick=closeLb;
 lb.onclick=e=>{if(e.target===lb)closeLb()};                 // a click on the greyed border
