@@ -278,12 +278,12 @@ def write_pdf(path, label, wbp, made):
         fig.text(0.07, y, "Each trade has two charts: at entry (only what was visible at the fill) and the follow-through, both with\n"
                  "the risk/reward tool: the entry line, the green TP zone and the red stop zone.", fontsize=9.5, color="#333333", va="top")
         y -= 0.06
-        for t, _ in made:
+        for t, _ in newest_first(made):
             if y < 0.05: pdf.savefig(fig); plt.close(fig); fig = plt.figure(figsize=(8.27, 11.69)); y = 0.95
             fig.text(0.07, y, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=8.5, color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
             y -= 0.017
         pdf.savefig(fig); plt.close(fig)
-        for t, (p1, p2) in made:
+        for t, (p1, p2) in newest_first(made):
             fig = plt.figure(figsize=(8.27, 11.69))
             fig.text(0.05, 0.965, heading(t).replace("✅ ", "").replace("❌ ", ""), fontsize=13, weight="bold",
                      color="#2e7d32" if t["Outcome"] == "TP" else "#c62828")
@@ -294,6 +294,11 @@ def write_pdf(path, label, wbp, made):
                 ax = fig.add_axes([0.02, 0.925 - (k + 1) * h - k * 0.02, 0.96, h]); ax.imshow(im, interpolation="lanczos"); ax.axis("off")
             pdf.savefig(fig, dpi=200); plt.close(fig)
     return path
+
+
+def newest_first(made):
+    """The trades in the order the pages list them: the latest first."""
+    return sorted(made, key=lambda m: m[0]["Entry time"], reverse=True)
 
 
 def anchor(t):
@@ -321,7 +326,7 @@ def write_html(path, label, wbp, made):
         f'<a href="#{anchor(t)}" class="{"tp" if t["Outcome"] == "TP" else "sl"}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
         f'<span>{"Win" if t["Outcome"] == "TP" else "Loss"} · {h.escape(t["Direction"])}'
-        + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in made)
+        + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in newest_first(made))
     def values(f):
         order = {"Taken": 0, "Filtered": 1, "Missed": 2, "A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5, "Ungraded": 9}
         vals = sorted({f(t) for t, _ in made}, key=lambda v: (order.get(v, 8), v))
@@ -352,7 +357,7 @@ def write_html(path, label, wbp, made):
         f'<section id="{anchor(t)}" {attrs(t)}><h2 class="{"tp" if t["Outcome"] == "TP" else "sl"}">{h.escape(heading(t))}</h2><p>{h.escape(trade_line(t))}</p>'
         f'{fact_table(t)}'
         f'<a href="{rel(p1)}" target="_blank"><img src="{rel(p1)}" {dims(p1)} loading="lazy" alt="at entry"></a>'
-        f'<a href="{rel(p2)}" target="_blank"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in made)
+        f'<a href="{rel(p2)}" target="_blank"><img src="{rel(p2)}" {dims(p2)} loading="lazy" alt="follow-through"></a></section>' for t, (p1, p2) in newest_first(made))
     css = """
 *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;color:#222;background:#fff}
 nav{position:fixed;top:0;left:0;bottom:0;width:230px;overflow-y:auto;border-right:1px solid #e5e5e5;background:#fafafa;padding:12px 8px}
@@ -369,10 +374,10 @@ main{margin-left:230px;padding:0 28px 24px;max-width:1300px}
 header.top{position:sticky;top:0;z-index:10;background:#fff;padding:14px 0 10px;border-bottom:1px solid #e5e5e5}
 header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
 .bar{display:flex;gap:10px;align-items:stretch} .blk{border:1px solid #e5e5e5;border-radius:6px;padding:6px 10px;background:#fafafa}
-.blk.filters{flex:2 1 auto} .blk:not(.filters){flex:1 1 0}
+.blk.filters{flex:1 1 auto;min-width:0} .blk:not(.filters){flex:0 0 auto}
 .bt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
 .grps{display:flex;flex-wrap:wrap;gap:4px 14px}
-.stats{display:flex;flex-wrap:wrap;gap:2px 12px} .stats div{display:flex;flex-direction:column} .stats span{font-size:10.5px;color:#888}
+.stats{display:flex;flex-wrap:nowrap;gap:12px;white-space:nowrap} .stats div{display:flex;flex-direction:column} .stats span{font-size:10.5px;color:#888}
 .stats b{font-size:15px}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
 section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828}
@@ -417,10 +422,10 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
 <nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3>{side}</nav>
 <main><header class="top"><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
-<div class="bar"><div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
+<div class="bar"><div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
+<div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
 {group("Outcome", "res", [("tp", "Win", sum(t["Outcome"] == "TP" for t, _ in made)), ("sl", "Loss", sum(t["Outcome"] != "TP" for t, _ in made))])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}</div></div>
-<div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <table><tr><th></th><th>Trades</th><th>Won</th><th>Win %</th><th>Net R</th><th>Avg MAE</th><th>Avg MFE</th></tr>{rows}</table>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to open it full size.</p>
@@ -457,7 +462,7 @@ def write_note(note, label, wbp, made, style):
     L += ["", "## Trades", ""]
     links = tv_links(wbp)
     cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
-    for t, (p1, p2) in made:
+    for t, (p1, p2) in newest_first(made):
         d = t["Entry time"]; res = "✅ TP" if t["Outcome"] == "TP" else "❌ Stop"
         L += [f"### {d:%a} {d.day} {d:%b} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}", "",
               f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
