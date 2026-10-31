@@ -289,6 +289,30 @@ def apply_confirmation(r):
     return r
 
 
+CONFIRMABLE = {o.lower(): o for o in ("TP", "Stop", "BE", "Not filled", "Open")}
+
+
+def confirm(rows, requests):
+    """Set Confirmed outcome on the trade each request names by its entry time (as shown in the log), narrowed by
+    direction when two trades share the minute. Exits without changing anything unless every request names one trade."""
+    rows, done = list(rows), []
+    for req in requests:
+        if len(req) not in (2, 3): sys.exit(f'--confirm takes "YYYY-MM-DD HH:MM" OUTCOME [long|short], got: {" ".join(req)}')
+        when, outcome = req[0], req[1].lower()
+        if outcome != "clear" and outcome not in CONFIRMABLE:
+            sys.exit(f"--confirm outcome must be one of {', '.join(CONFIRMABLE.values())} or clear, got: {req[1]}")
+        try: t = dt.datetime.strptime(when, "%Y-%m-%d %H:%M")
+        except ValueError: sys.exit(f'--confirm time must look like "2026-10-28 19:15", got: {when}')
+        hits = [r for r in rows if r.get("Entry time") and r["Entry time"].replace(second=0) == t
+                and (len(req) == 2 or str(r.get("Direction")).lower() == req[2].lower())]
+        if len(hits) != 1:
+            sys.exit(f"--confirm {when}: {'no trade' if not hits else f'{len(hits)} trades (add long or short)'} "
+                     f"entered then; nothing changed")
+        hits[0]["Confirmed outcome"] = None if outcome == "clear" else CONFIRMABLE[outcome]
+        done.append(hits[0])
+    return done
+
+
 def key(r):
     # the drawing id survives moving the drawing (new entry time, other timeframe), so it alone identifies the trade
     return (str(r["Symbol"]), str(r["Drawing id"]))
@@ -394,7 +418,11 @@ if __name__ == "__main__":
     ap.add_argument("--recheck", action="store_true", help="re-assess the trades already in the workbook; no clipboard")
     ap.add_argument("--decision", choices=["Filtered", "Missed", "Taken"], help="set Decision on the copied drawings")
     ap.add_argument("--remove", action="store_true", help="delete the copied drawings from the sheet")
+    ap.add_argument("--confirm", nargs="+", action="append", metavar="ARG",
+                    help='"YYYY-MM-DD HH:MM" OUTCOME [long|short]: set Confirmed outcome on the trade entered then '
+                         '(OUTCOME TP, Stop, BE, Not filled, Open, or clear) and re-check the workbook; no clipboard')
     a = ap.parse_args()
+    if a.confirm: a.recheck = True
     path = config.workbook(a.out)
     if a.decision and not journal.enabled(path):
         sys.exit(f"{path.name} has no journal columns, so there is no Decision to set. Add them first: "
@@ -412,6 +440,7 @@ if __name__ == "__main__":
         if lt and not config.symbol(r["Symbol"])["tick"]: learned[r["Symbol"]] = lt
         if w: warns.append(w)
     old = {key(r): r for r in load(path)}
+    confirmed = confirm(old.values(), a.confirm or [])
     has_journal = journal.enabled(path)
     if a.remove:
         gone = [old.pop(key(r)) for r in new if key(r) in old]; missing = [r for r in new if key(r) not in {key(g) for g in gone}]
@@ -444,10 +473,17 @@ if __name__ == "__main__":
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
         check_with_prices(r); apply_confirmation(r)
         if has_journal: journal.autofill_decision(r)
-    print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
-          + (" — dry run, nothing written" if a.dry_run else ""))
-    print("updated from the clipboard:")
-    for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r) + (f"  → {a.decision}" if a.decision else ""))
+    if confirmed:
+        print("confirmed" + (" — dry run, nothing written" if a.dry_run else "") + ":")
+        for r in confirmed: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  "
+                                  f"{r.get('Confirmed outcome') or 'cleared'}  → {r.get('Check') or 'no flag'}")
+    elif a.recheck:
+        print(f"re-checked {len(rows)} trades" + (" — dry run, nothing written" if a.dry_run else ""))
+    else:
+        print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
+              + (" — dry run, nothing written" if a.dry_run else ""))
+        print("updated from the clipboard:")
+        for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r) + (f"  → {a.decision}" if a.decision else ""))
     todo = [r for r in rows if str(r.get("Check") or "").startswith("CONFIRM")]
     if todo:
         print(f"{len(todo)} to confirm in Excel (set 'Confirmed outcome'):")
