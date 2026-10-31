@@ -13,6 +13,10 @@ Per trade, on the Trades sheet:
                     "BE" when price then came back to the entry before the TP (flagged amber), else Win / Loss / Open
   1.5R BE at 55%    the same, with the TP at 1.5R (stop to entry after 0.825R in favour)
   1.5R BE at 1R     TP at 1.5R, stop to entry once price is 1R in favour
+  Bars clear of EMA 9   how many 5m bars in a row sat wholly clear of the EMA 9 on the trade's side (low above it for a
+                    long, high below it for a short) before the retest, counted back from the last clear bar before the
+                    entry: 1-2 = price barely left the line, higher = a longer leg away from it. 0 = none in the last
+                    4 hours; 48 = 4 hours or more
   ATR 5m … ATR D    ATR(14) on 5m, 15m, 4h and daily bars at the entry time (last closed bar of each; indicators.py)
   ATR 1:1 … 1.5:1.5 same entry, stop and TP sized from the 5m ATR at entry (stop multiple : TP multiple) → Win / Loss
   VWAP …            the chart's session VWAP at the entry (last closed 5m bar): its value, the entry's distance from it
@@ -51,7 +55,8 @@ RENAMED = {"VWAP slope": "VWAP 30m change"}  # its 30-minute comparison was neve
 FLAT_PTS = 2       # VWAP moving less than this over the last 10 minutes counts as flat
 TURNING = 0.5      # still moving the same way, but at less than this share of the previous 10 minutes' pace
 TARGET_COLS = [f"TP {t:g}R" for t in TARGETS]
-NEW_COLS = ["1/2 stop"] + TARGET_COLS + ["MAE pts", "MFE pts", "BE at 55%", "1.5R BE at 55%", "1.5R BE at 1R"] + ATR_COLS + ATR_RR_COLS + VWAP_COLS
+CLEAR_COL = "Bars clear of EMA 9"
+NEW_COLS = ["1/2 stop"] + TARGET_COLS + ["MAE pts", "MFE pts", "BE at 55%", "1.5R BE at 55%", "1.5R BE at 1R", CLEAR_COL] + ATR_COLS + ATR_RR_COLS + VWAP_COLS
 # Earlier versions named the targets in points; their columns are removed so the sheet doesn't carry both
 OBSOLETE = ["10pt", "15pt", "20pt", "30pt", "40pt", "50pt", "30pt BE at 55%", "30pt BE at 20pt"]
 
@@ -174,6 +179,8 @@ def enrich(path):
         nd = config.decimals(v.get("Symbol"), v.get("Entry")) if v.get("Symbol") else 2
         if t0 and v.get("Symbol"):
             out.update({c: (round(x, nd + 1) if x is not None else None) for c, x in zip(ATR_COLS, indicators.atr_at(v["Symbol"], t0).values())})
+            if v.get("Direction") in ("Long", "Short"):
+                out[CLEAR_COL] = indicators.bars_clear(v["Symbol"], t0, 9, 1 if v["Direction"] == "Long" else -1)
             vw = indicators.vwap_at(v["Symbol"], t0)
             if vw and v.get("Entry") is not None and v.get("Stop") is not None and v.get("TP planned") is not None:
                 s_ = 1 if v["Direction"] == "Long" else -1; e_ = v["Entry"]; dist = (e_ - vw[0]) * s_
