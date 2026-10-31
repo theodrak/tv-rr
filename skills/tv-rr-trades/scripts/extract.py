@@ -250,8 +250,8 @@ def be_exit(r):
 
 
 def apply_confirmation(r):
-    """Flag results that still need the user's eye. Checked on 1m prices: only a call decided inside one 1m candle, or
-    a disagreement with TradingView. Checked on coarser bars (no 1m coverage): anything the script worked out itself. A confirmed
+    """Flag results that still need the user's eye. Checked on 1m prices: only a call decided inside one 1m candle (a
+    disagreement with TradingView is noted, not flagged: the 1m path settles it). Checked on coarser bars (no 1m coverage): anything the script worked out itself. A confirmed
     outcome overrides the computed one, and its result is re-scored."""
     note = r.get("Note") or ""
     tv, out = r.get("TradingView says"), r.get("Outcome")
@@ -265,7 +265,10 @@ def apply_confirmation(r):
     elif "no price data covers this date" in note: reasons.append("no price data for this date")
     m = re.search(r"order inside one (\d+m) candle", note)
     if m and m.group(1) != "1m": reasons.append(f"decided inside one {m.group(1)} candle")
-    if tv in ("TP", "Stop") and out in ("TP", "Stop", "Both in one candle") and out != tv: reasons.append(f"TradingView says {tv}")
+    # a clean 1m call (fill, stop and TP in separate 1m candles) outranks TradingView, whose tool reads the chart's own
+    # candles and can't order a stop and TP inside one of them; the Note still records what TradingView showed
+    clean_1m = "checked on 1m prices" in note and "order inside one 1m candle" not in note
+    if tv in ("TP", "Stop") and out in ("TP", "Stop", "Both in one candle") and out != tv and not clean_1m: reasons.append(f"TradingView says {tv}")
     conf = r.get("Confirmed outcome")
     if conf == "BE":  # the stop was moved to the entry and price came back to it: 0 pts, out at the first return
         tp_exit = r.get("Exit time") if r.get("Outcome") == "TP" else None
