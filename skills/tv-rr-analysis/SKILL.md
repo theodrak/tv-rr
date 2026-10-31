@@ -64,6 +64,22 @@ It also writes the gallery in the formats set by `gallery.format` (or `--format`
 - **`pdf`:** a summary page, then one A4 page per trade. Use it for sharing and printing.
 - **`markdown`:** a page for Obsidian, VS Code or GitHub.
 
+**Each trade's facts.** Under each trade's heading (HTML and Markdown), a row shows:
+- **risk**, in points, or in pips for 5-decimal FX;
+- **5m ATR**;
+- **1/2 stop**, **1R** and **1.5R** what-ifs (coloured win/loss in HTML, ✅/❌ in Markdown);
+- **MAE**, **MFE**, **Decision** and **Grade**;
+- the **TV chart** link (the cell's hyperlink target).
+
+The **Filter, Grade and General notes** go on their own line below. The HTML page keeps a fixed bar at the top with three blocks:
+- **All trades:** rows for All, Long and Short: trades, won, lost, win %, net R, average MAE and MFE. They replace the summary table that used to sit under the title in the HTML page.
+- **Filters:** toggle buttons for **Outcome**, **Decision** and **Grade**. Several in one group show trades matching any of them (OR), the groups combine (AND), and **Clear** resets. An **Images** choice (Entry only / Exit only / Both, default Both) shows the at-entry charts, the follow-through charts or both.
+- **Filtered:** the same rows for the trades shown, updated with every click.
+
+Break-even trades (Outcome **BE**) are charted with a grey break-even marker at the entry, carry a grey bar and "⚪ BE", get a BE button in the Outcome filter and a BE column in the stats; they count as trades but not wins, as in the Breakdown sheet. Every page lists the trades newest first. Clicking a chart in the HTML page opens it in a viewer over the page (no new tab), at about 95% of the window with a dark see-through border, the chart framed with rounded corners and the sidebar's green (win) or red (loss) bar down its left edge. ← / → (keys or the side buttons) step through the charts the page is showing, so the filters and the Images choice carry over, and a caption gives the position, trade and chart. Each step also highlights that trade in the sidebar and scrolls the page behind to it, so closing (the red cross, a click on the dark border, a double-click or Escape) leaves you at the last trade viewed.
+
+The sidebar lists the trades shown.
+
 **Chart links in the workbook.** With `html`, every trade gets a **Chart** column in the workbook: "Open chart" jumps straight to that trade in the gallery.
 - **Each trade's section is anchored** on its symbol and TradingView drawing id. A one-line jump page per trade redirects to the anchor, because Excel strips `#anchors` (and `?queries`) from links to local files.
 - **On a Mac the jump pages live in Office's own folder** (`~/Library/Group Containers/UBF8T346G9.Office/tv-rr/<id>/`). Mac Excel is sandboxed: it asks permission for every other file a link opens and can't be given a folder, but it opens files there without asking. Those links are absolute, so if the gallery folder moves, run the gallery again.

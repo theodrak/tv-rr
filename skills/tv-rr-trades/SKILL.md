@@ -1,6 +1,6 @@
 ---
 name: tv-rr-trades
-description: Logs TradingView Long/Short Position (risk/reward) tools copied to the clipboard into an Excel trade log — entry, stop, TP, entry and exit times, outcome — for any instrument, re-checking each outcome on stored price data and flagging uncertain ones for the user to confirm. Use when the user has copied long/short position tools from TradingView and wants them logged, updated or checked, or wants to set up or update the price data the checks use.
+description: Logs TradingView Long/Short Position (risk/reward) tools copied to the clipboard into an Excel trade log — entry, stop, TP, entry and exit times, outcome — for any instrument, re-checking each outcome on stored price data and flagging uncertain ones for the user to confirm. Use when the user has copied long/short position tools from TradingView and wants them logged, updated or checked, or wants to set up or update the price data the checks use, or wants logged trades put back on the clipboard to paste into a TradingView chart.
 ---
 
 # TradingView risk/reward tools → Excel trade log
@@ -58,6 +58,28 @@ The clipboard is read on macOS (`osascript`), Windows (PowerShell) and Linux (`w
 
 When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown sheet are refreshed automatically after every save.
 
+## Back into TradingView (`to_tradingview.py`)
+
+The reverse of logging: logged trades go back on the clipboard as Long/Short Position drawings the user pastes into a
+TradingView chart with ⌘V. Use when the user asks to put trades back on a chart, redraw them, or see them in TradingView.
+
+`uv run -q --with openpyxl --with pyobjc-framework-Cocoa python scripts/to_tradingview.py <selectors> [--workbook PATH] [--label TEXT] [--dry-run]`
+
+- **Selectors** (at least one, they combine): `--id ID …` (the Drawing id column), `--date 2026-07-01` or
+  `--date 2026-07-01..2026-07-31` (entry date as shown in the log), `--direction long|short`, `--outcome TP|Stop|…`,
+  `--last N` (the N most recent after the other filters).
+- **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
+- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
+  workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
+- **It keeps the trade's drawing id**, so copying the drawing back out of TradingView and logging it updates its row
+  instead of adding a duplicate.
+- Entry, stop and TP come from the row (needs the symbol's tick in the config); a closed trade gets its close point at
+  the exit TradingView drew, else the logged exit. Style comes from `scripts/position_template.json`.
+- macOS only for the clipboard. Elsewhere, `--out FILE.html` writes the clip to a file.
+
+Tell the user how many drawings are on the clipboard, list their names, and say to click a chart of that symbol and
+press ⌘V; they appear at their own dates, so they may need to scroll to them.
+
 ## TV chart column
 
 **TV chart** (column 5, next to the gallery's **Chart** link) holds the user's own TradingView chart link for each trade.
@@ -80,7 +102,10 @@ next to a Backtest file). Without `--from`, the lists start with a few generic e
 - **Lists sheet:** the dropdown choices. Column A is filter reasons, B is grade reasons (each starts with `+` or `-`), C is confluences. The user edits them in Excel. Column E is a guide the script rewrites.
 - **Auto confluence sheet:** controls which levels are filled in automatically.
   - **Distance** and **Unit**: `pts` means price units; `pips` means 10 ticks, as on 5-decimal FX quotes. Ask the user for both, in their own terms. Never use ATR, because a moving yardstick can't be read back.
-  - **Level rows:** VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low, each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list.
+  - **Level rows:** each with **On** (Yes/No) and the **Name** to write, which should match their Confluence list:
+    - VWAP, `SMA n`, `EMA n`, Previous day high, Previous day low;
+    - **`Indicator <plot name>`**: any column stored from their exports (e.g. `Indicator PDH`), read at the last candle before the entry;
+    - **`Prior VAH` / `Prior VAL` / `Prior POC`**: the previous session's value area. This needs the symbol setting `value_area`, e.g. `config.py symbol OANDA:DE30EUR value_area '{"session": "09:00-17:35 Europe/Berlin", "step": 5}'`. It matches de30-open-review's pVAH/pVAL/pPOC exactly (70 sessions checked).
   - **A blank Distance** switches auto-fill off.
 - **Columns:**
   - **Decision:** **Taken** by default for every trade added, or Filtered or Missed. Taken with filter reasons means the user took it because something outweighed them, noted in Filter notes.
@@ -167,7 +192,7 @@ The claude.ai **TradingView** connector can fill recent gaps without an export. 
   - **Without 1m bars,** TradingView's exit is the record when it falls after the candle the order filled in. It is re-derived from the bars when it falls in the entry or fill candle (TradingView counts a level anywhere in that candle's range, even before the fill), when its close is at neither the TP nor the stop, or when it shows no exit.
   - **Candle path:** each candle is walked along its likely path, bullish O→L→H→C and bearish O→H→L→C. The fill is where the path crosses the entry; the exit is whichever of stop or TP it reaches next.
   - **An exit in the fill candle is not automatically a doubt.** If that candle reached only one level and the following candles reach the same level first, the result is the same either way.
-- **Confirmation.** Uncertain results are flagged **CONFIRM** in the **Check** column, with the reason. The user picks the real result in **Confirmed outcome** (TP / Stop / Not filled / Open). Every run keeps that value and the script never overwrites it, unless the drawing is copied again with different levels.
+- **Confirmation.** Uncertain results are flagged **CONFIRM** in the **Check** column, with the reason. The user picks the real result in **Confirmed outcome** (TP / Stop / BE / Not filled / Open). **BE** (break-even) is for a trade whose stop was moved to the entry and price came back to it: 0 pts, 0R, exit price = the entry, and the exit time is the first return to the entry after price had gone 55% of the way to the TP (the same trigger as the Breakdown's "stop to entry at 55%" what-if; if price never got that far, the first return after the fill). The Note says which. Every run keeps that value and the script never overwrites it, unless the drawing is copied again with different levels.
 - **Times** are shown in the configured timezone, in columns named without a zone (Entry time, Exit time…). Older workbooks with "Entry time (Sydney)" columns are migrated automatically. **Entry (UTC)** is the reference.
 
 ## After running, tell the user
