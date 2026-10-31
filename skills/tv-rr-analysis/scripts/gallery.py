@@ -168,7 +168,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--file"); ap.add_argument("--note"); ap.add_argument("--title"); ap.add_argument("--only", nargs="*"); ap.add_argument("--symbol"); ap.add_argument("--format")
     a = ap.parse_args(); wbp = config.workbook(a.file); label = a.title or wbp.stem
-    g = config.load()["gallery"]; elements = g["elements"]
+    g = config.gallery_for(wbp); elements = g["elements"]
     images = config.path(g["images_dir"]) or wbp.parent / "Charts"
     from openpyxl import load_workbook
     rows = list(load_workbook(wbp, read_only=True)["Trades"].iter_rows(values_only=True))
@@ -324,7 +324,8 @@ def write_html(path, label, wbp, made):
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
     num = lambda v: "" if v is None else f"{v}"
-    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
+    clear = lambda t: "" if t.get("Bars clear of EMA 9") in (None, "") else int(t["Bars clear of EMA 9"])
+    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" data-nclear="{clear(t)}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
                        f'data-dir="{h.escape(t["Direction"])}"')
     side = "".join(
@@ -341,6 +342,14 @@ def write_html(path, label, wbp, made):
         """A row of toggle buttons: several in one group show trades matching any of them (OR); the groups combine (AND)."""
         btns = "".join(f'<button data-g="{key}" data-v="{h.escape(v)}">{h.escape(lbl)} <i>{n}</i></button>' for v, lbl, n in items)
         return f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns">{btns}</div></div>'
+
+    def clear_range(made, clear):
+        """From / To boxes for the "Bars clear of EMA 9" column; nothing when no trade has it."""
+        vals = [clear(t) for t, _ in made if clear(t) != ""]
+        if not vals: return ""
+        return ('<div class="grp"><div class="gt">Bars clear of EMA 9</div><div class="btns rng">'
+                f'from <input id="cmin" type="number" min="0" max="48" placeholder="any"> to '
+                f'<input id="cmax" type="number" min="0" max="48" placeholder="any"> <i>{min(vals)}–{max(vals)} in this log</i></div></div>')
 
     def dims(p):
         import struct
@@ -370,6 +379,8 @@ nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;m
 #clear{float:right;float:right;font:11px inherit;text-transform:none;letter-spacing:0;padding:1px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
 .grp{} .gt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin:0 2px 3px}
 .btns{display:flex;flex-wrap:wrap;gap:4px} .btns button{font:12px inherit;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
+.rng{align-items:center;font-size:12px;color:#555} .rng input{width:52px;font:12px inherit;padding:2px 4px;border:1px solid #ddd;border-radius:4px}
+.rng i{font-style:normal;color:#999;font-size:11px}
 .btns button i{font-style:normal;color:#999;font-size:11px} .btns button.on{background:#222;color:#fff;border-color:#222} .btns button.on i{color:#ccc}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
@@ -423,14 +434,20 @@ function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp
     +`<td class="${r>=0?'tp':'sl'}">${n?(r>=0?'+':'')+r.toFixed(1)+'R':'–'}</td><td>${avg(num('mae'))}</td><td>${avg(num('mfe'))}</td></tr>`}
 function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th>'+(hasBE?'<th>BE</th>':'')+'<th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
   +row('All',list)+row('Long',list.filter(s=>s.dataset.dir==='Long'))+row('Short',list.filter(s=>s.dataset.dir==='Short'))+'</table>'}
-function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]));
+// "Bars clear of EMA 9" range: From / To, either may be blank (no limit); trades without the value drop out once one is set
+const cmin=document.getElementById('cmin'), cmax=document.getElementById('cmax');
+function inRange(e){if(!cmin)return true; const lo=cmin.value===''?null:+cmin.value, hi=cmax.value===''?null:+cmax.value;
+  if(lo===null&&hi===null)return true; const v=e.dataset.nclear===''?NaN:+e.dataset.nclear;
+  return !isNaN(v)&&(lo===null||v>=lo)&&(hi===null||v<=hi)}
+function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]))&&inRange(e);
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
   document.getElementById('shown').textContent=shown.length;document.getElementById('fstats').innerHTML=stats(shown)}
 document.getElementById('ostats').innerHTML=stats(secs);
 document.querySelectorAll('header .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
   if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
-document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear());
+if(cmin){cmin.oninput=apply; cmax.oninput=apply}
+document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); if(cmin){cmin.value='';cmax.value=''}
   document.querySelectorAll('header .grp button').forEach(b=>b.classList.remove('on'));apply()};
 apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
@@ -469,6 +486,7 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 <div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
 {group("Outcome", "res", [(c, w, n) for c, w, n in ((c, w, sum(res_of(t)[0] == c for t, _ in made)) for c, _, w, _ in OUTCOMES.values()) if n or c != "be"])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
+{clear_range(made, clear)}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to enlarge it, use ← → to step through the charts shown, and close it with the red cross, a click outside it, a double-click or Escape.</p>

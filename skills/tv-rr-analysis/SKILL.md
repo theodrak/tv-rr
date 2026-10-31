@@ -89,7 +89,10 @@ The sidebar lists the trades shown.
 
 **Before the first gallery, ask the user which elements to draw** and save the answer with
 `config.py set gallery.elements '["sessions","vwap","kernel","sma50","sma100","sma200","sma500","sma1000"]'` (that list is the default).
-`config.py elements` lists every choice:
+`config.py elements` lists every choice. **A workbook can have its own settings** in `gallery.workbooks`, keyed by a
+fragment of its file name (case-insensitive), e.g. `{"9 Ema Retest": {"elements": [..., "ema9", ...]}}` turns the EMA 9 on
+for that strategy's back, forward and replay logs only; any gallery setting can be overridden this way. When the user
+wants an element for one strategy, put it there rather than in the general list.
 
 | Element | What it draws |
 |---|---|

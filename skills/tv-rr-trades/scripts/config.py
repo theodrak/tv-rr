@@ -36,7 +36,8 @@ DEFAULTS = {
     "indicator_names": {},   # exported plot name → column name, e.g. {"Buy": "Long signal"}
     "indicator_columns": False,  # also add a "TV <name>" column per stored indicator to the trade log
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
-                "timeframe": None, "format": ["html"]},
+                "timeframe": None, "format": ["html"],
+                "workbooks": {}},  # workbook name fragment → gallery settings for those workbooks, e.g. their own elements
 }
 
 
@@ -87,6 +88,16 @@ def workbook(override=None):
         sys.exit("No workbook set. Choose where the trade log should live, then run:\n"
                  "  config.py set workbook \"~/path/to/TradingView trades.xlsx\"")
     return p
+
+
+def gallery_for(wb):
+    """The gallery settings for a workbook: the general ones, overridden by every gallery.workbooks entry whose key appears
+    in the workbook's file name (case-insensitive), so "9 Ema Retest" covers its back, forward and replay logs."""
+    g = load()["gallery"]
+    out = {k: v for k, v in g.items() if k != "workbooks"}
+    for frag, over in (g.get("workbooks") or {}).items():
+        if frag.lower() in Path(wb).stem.lower(): out.update(over)
+    return out
 
 
 def symbol(sym):
