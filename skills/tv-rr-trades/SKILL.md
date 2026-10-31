@@ -1,6 +1,6 @@
 ---
 name: tv-rr-trades
-description: Logs TradingView Long/Short Position (risk/reward) tools copied to the clipboard into an Excel trade log — entry, stop, TP, entry and exit times, outcome — for any instrument, re-checking each outcome on stored price data and flagging uncertain ones for the user to confirm. Use when the user has copied long/short position tools from TradingView and wants them logged, updated or checked, or wants to set up or update the price data the checks use.
+description: Logs TradingView Long/Short Position (risk/reward) tools copied to the clipboard into an Excel trade log — entry, stop, TP, entry and exit times, outcome — for any instrument, re-checking each outcome on stored price data and flagging uncertain ones for the user to confirm. Use when the user has copied long/short position tools from TradingView and wants them logged, updated or checked, or wants to set up or update the price data the checks use, or wants logged trades put back on the clipboard to paste into a TradingView chart.
 ---
 
 # TradingView risk/reward tools → Excel trade log
@@ -57,6 +57,28 @@ Options:
 The clipboard is read on macOS (`osascript`), Windows (PowerShell) and Linux (`wl-paste` or `xclip`). TradingView puts drawings in the clipboard's HTML. If nothing is found, ask the user to select the Long/Short Position tools in TradingView, press Cmd-C or Ctrl-C, and try again.
 
 When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown sheet are refreshed automatically after every save.
+
+## Back into TradingView (`to_tradingview.py`)
+
+The reverse of logging: logged trades go back on the clipboard as Long/Short Position drawings the user pastes into a
+TradingView chart with ⌘V. Use when the user asks to put trades back on a chart, redraw them, or see them in TradingView.
+
+`uv run -q --with openpyxl --with pyobjc-framework-Cocoa python scripts/to_tradingview.py <selectors> [--workbook PATH] [--label TEXT] [--dry-run]`
+
+- **Selectors** (at least one, they combine): `--id ID …` (the Drawing id column), `--date 2026-07-01` or
+  `--date 2026-07-01..2026-07-31` (entry date as shown in the log), `--direction long|short`, `--outcome TP|Stop|…`,
+  `--last N` (the N most recent after the other filters).
+- **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
+- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
+  workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
+- **It keeps the trade's drawing id**, so copying the drawing back out of TradingView and logging it updates its row
+  instead of adding a duplicate.
+- Entry, stop and TP come from the row (needs the symbol's tick in the config); a closed trade gets its close point at
+  the exit TradingView drew, else the logged exit. Style comes from `scripts/position_template.json`.
+- macOS only for the clipboard. Elsewhere, `--out FILE.html` writes the clip to a file.
+
+Tell the user how many drawings are on the clipboard, list their names, and say to click a chart of that symbol and
+press ⌘V; they appear at their own dates, so they may need to scroll to them.
 
 ## TV chart column
 

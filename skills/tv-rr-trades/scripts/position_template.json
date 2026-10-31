@@ -1,0 +1,110 @@
+{
+ "type": "drawing",
+ "geometry": [
+  {
+   "x": 0.7801181347117815,
+   "y": 0.3383742577057216
+  },
+  {
+   "x": 0.8598873591325681,
+   "y": 0.3383742577057216
+  },
+  {
+   "x": 0.7801181347117815,
+   "y": 0.3383742577057216
+  },
+  {
+   "x": 0.8332976176589726,
+   "y": 0.22195557231281868
+  }
+ ],
+ "source": {
+  "type": "LineToolRiskRewardLong",
+  "state": {
+   "linecolor": "#787B86",
+   "textcolor": "rgba(255, 255, 255, 1)",
+   "stopBackground": "rgba(242, 54, 69, 0.07)",
+   "profitBackground": "rgba(34, 171, 148, 0.13)",
+   "stopBackgroundTransparency": 80,
+   "profitBackgroundTransparency": 80,
+   "intervalsVisibilities": {
+    "ticks": false,
+    "seconds": false,
+    "minutesTo": 15,
+    "hours": false,
+    "days": false,
+    "weeks": false,
+    "months": false,
+    "ranges": false
+   },
+   "linewidth": 1,
+   "fontsize": 12,
+   "compact": false,
+   "riskDisplayMode": "percents",
+   "accountSize": 200000,
+   "lotSize": 1,
+   "risk": 1,
+   "leverage": 100,
+   "alwaysShowStats": false,
+   "showPriceLabels": false,
+   "qtyPrecision": "default",
+   "currency": "NONE",
+   "infoBlocks": {
+    "tpPriceOffset": {
+     "visible": true
+    },
+    "tpPercentOffset": {
+     "visible": false
+    },
+    "tpTickOffset": {
+     "visible": false
+    },
+    "tpAmount": {
+     "visible": false
+    },
+    "tpPL": {
+     "visible": false
+    },
+    "openClosePL": {
+     "visible": true
+    },
+    "qty": {
+     "visible": false
+    },
+    "riskRewardRatio": {
+     "visible": true
+    },
+    "slPriceOffset": {
+     "visible": true
+    },
+    "slPercentOffset": {
+     "visible": false
+    },
+    "slTickOffset": {
+     "visible": false
+    },
+    "slAmount": {
+     "visible": false
+    },
+    "slPL": {
+     "visible": false
+    }
+   },
+   "symbolStateVersion": 2,
+   "zOrderVersion": 2,
+   "frozen": false,
+   "currencyId": null,
+   "unitId": null,
+   "metricId": "price",
+   "visible": true,
+   "entryPointCurrencyRate": 1,
+   "closePointCurrencyRate": 1
+  },
+  "zorder": 19998,
+  "sharingMode": 1,
+  "version": 2,
+  "ownerSourceBase": 10,
+  "ownerSource": "36EYpr",
+  "linkKey": "VxXSOnH1TYWZ"
+ }
+}
