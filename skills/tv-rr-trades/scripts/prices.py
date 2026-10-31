@@ -33,6 +33,11 @@ DERIVED = (5, 15, 30, 60, 240)  # bar sizes built from 1m where the exports leav
 # only the trading inside them (a market that opens at 02:15 or closes at 22:00 gives shorter bars there), and no bar
 # crosses into the next trading day.
 _cache = {}
+# Plot titles the DE30 Key Levels indicator used before v20261007.17 (levels) and .21 (SMAs), stored under the names
+# it uses now, so old and new exports share one series per level. Applied to indicator columns only, never prices.
+PLOT_RENAMES = {"HOD": "PDH", "LOD": "PDL", "50% H/LOD": "PD 50%", "HOW": "PWH", "LOW": "PWL", "50% H/LOW": "PW 50%",
+                "Dev 50% H/LOW": "WEQ", "IHOD": "AH", "ILOD": "AL", "50% Asia": "Asia 50%", "US Close": "NY Close",
+                **{f"{n} Ma": f"{n} SMA" for n in (50, 100, 200, 500, 1000)}}
 
 
 def safe(sym):
@@ -81,7 +86,7 @@ def read_export(p, indicators=False):
     # the price columns are the first time/open/high/low/close (and volume, VWAP, kernel); everything else, including a
     # later "LOW" or "High" plot, is an indicator
     base = {ix[k] for k in BASE_COLS if k in ix}
-    ind_cols = [(i, names[i]) for i in range(len(head)) if i not in base]
+    ind_cols = [(i, PLOT_RENAMES.get(names[i], names[i])) for i in range(len(head)) if i not in base]
     ind_rows = []
     if not all(k in ix for k in ("time", "open", "high", "low", "close")): return None, None
     bars = []
@@ -248,6 +253,17 @@ def migrate_json(con):
     con.commit()
 
 
+def drop_ignored(sym, rows):
+    """Indicator rows without the plots in the symbol's config ignore_indicators (a name also covers its repeats,
+    "Shapes" → "Shapes (2)"), and the set of plot names left out."""
+    ignore = set(config.symbol(sym).get("ignore_indicators") or [])
+    if not ignore or not rows: return rows, set()
+    base = lambda n: re.sub(r" \(\d+\)$", "", n)
+    dropped = {n for r in rows for n in r if n != "t" and base(n) in ignore}
+    if not dropped: return rows, set()
+    return [x for x in ({k: v for k, v in r.items() if k not in dropped} for r in rows) if len(x) > 1], dropped
+
+
 def ingest(verbose=True, fresh=False):
     """Read new or changed exports. Only those files are read: their bars and indicator columns are upserted with the
     file's mtime as rank, so the newest file wins where exports overlap. fresh (--rebuild) forgets every export bar and
@@ -267,6 +283,8 @@ def ingest(verbose=True, fresh=False):
             if verbose: print(f"skipped {p.name}: not a TradingView export (no symbol in the name or no time column)")
             continue
         put_bars(sym, m, bars, sig[0], "export", keep_last=True)
+        ind, dropped = drop_ignored(sym, ind)
+        if dropped: print(f"{p.name}: not stored, listed in {sym} ignore_indicators: {', '.join(sorted(dropped))}")
         if ind and (m >= 5 or config.load().get("indicators_1m")): put_indicators(sym, m, ind, sig[0], keep_last=True)
         con.execute("insert or replace into exports values (?,?,?,?,?)", (str(p), sig[0], sig[1], sym, m))
         first = changed.get((sym, m)); changed[(sym, m)] = min(first, bars[0]["t"]) if first else bars[0]["t"]
