@@ -68,6 +68,8 @@ TradingView chart with ⌘V. Use when the user asks to put trades back on a char
 - **Selectors** (at least one, they combine): `--id ID …` (the Drawing id column), `--date 2026-07-01` or
   `--date 2026-07-01..2026-07-31` (entry date as shown in the log), `--direction long|short`, `--outcome TP|Stop|…`,
   `--last N` (the N most recent after the other filters).
+- **Box width:** at least 40 minutes (`--min-minutes`), so a 5-minute trade is still easy to spot; the close point
+  stays at the real exit.
 - **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
 - **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
   workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.

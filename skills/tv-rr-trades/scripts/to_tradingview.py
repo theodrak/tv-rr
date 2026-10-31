@@ -1,13 +1,14 @@
 """Put logged trades back on the clipboard as TradingView Long/Short Position drawings, ready to paste into a chart.
 
 usage: to_tradingview.py [--workbook PATH] [--id ID ...] [--date YYYY-MM-DD[..YYYY-MM-DD]] [--direction long|short]
-                         [--outcome TP|Stop|…] [--last N] [--label TEXT] [--out FILE.html] [--dry-run]
+                         [--outcome TP|Stop|…] [--last N] [--min-minutes 40] [--label TEXT] [--out FILE.html] [--dry-run]
 
 At least one selector (--id, --date, --direction, --outcome, --last) is required. Filters combine. Each drawing keeps
 the trade's drawing id, so copying it back out of TradingView updates its row instead of adding a new one, and is
 named "<label> <entry date and time> <direction> <outcome> <result R>" (label defaults to the workbook's name, less
 "Back/Forward/Replay Testing"). Entry, stop and TP are rebuilt from the row; a closed trade gets its close point at
-the exit TradingView drew (else the logged exit). The style comes from position_template.json.
+the exit TradingView drew (else the logged exit). Each box is at least --min-minutes wide (default 40) so
+short trades stay visible; the close point stays at the real exit. The style comes from position_template.json.
 
 Writing the clipboard needs macOS (run with --with pyobjc-framework-Cocoa). Elsewhere use --out and open the file.
 """
@@ -34,7 +35,7 @@ def epoch(naive_utc):
     return int(naive_utc.replace(tzinfo=dt.timezone.utc).timestamp())
 
 
-def drawing(row, base, label):
+def drawing(row, base, label, min_minutes=40):
     sym, tf = row["Symbol"], str(row.get("Timeframe") or "5")
     tick = config.symbol(sym).get("tick")
     if not tick:
@@ -57,9 +58,10 @@ def drawing(row, base, label):
     pts = [pt(entry_t, row["Entry"])]
     if exit_shown and row.get("Exit price") is not None:
         exit_t = epoch(exit_shown - shown_offset)
-        pts += [pt(exit_t + 2 * bar, row["Entry"]), pt(entry_t, row["Entry"]), pt(exit_t, row["Exit price"])]
+        right = max(exit_t + 2 * bar, entry_t + min_minutes * 60)
+        pts += [pt(right, row["Entry"]), pt(entry_t, row["Entry"]), pt(exit_t, row["Exit price"])]
     else:
-        pts.append(pt(entry_t + 12 * bar, row["Entry"]))
+        pts.append(pt(entry_t + max(12 * bar, min_minutes * 60), row["Entry"]))
     src["points"] = pts; d["geometry"] = d["geometry"][:len(pts)]
     return d
 
@@ -76,6 +78,7 @@ def main():
     ap.add_argument("--date", help="YYYY-MM-DD or YYYY-MM-DD..YYYY-MM-DD, by entry date in the log's timezone")
     ap.add_argument("--direction", choices=["long", "short"]); ap.add_argument("--outcome")
     ap.add_argument("--last", type=int, help="the N most recent entries (after the other filters)")
+    ap.add_argument("--min-minutes", type=int, default=40, help="minimum width of each box, so short trades stay visible")
     ap.add_argument("--label"); ap.add_argument("--out"); ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     if not (a.id or a.date or a.direction or a.outcome or a.last):
@@ -92,7 +95,7 @@ def main():
     if not rows: sys.exit("No trades match.")
     label = a.label if a.label is not None else default_label(path)
     base = json.loads(TEMPLATE.read_text())
-    sources = [drawing(r, base, label) for r in rows]
+    sources = [drawing(r, base, label, a.min_minutes) for r in rows]
     for s in sources: print(s["source"]["state"]["title"])
     title = "Drawings" if len(sources) > 1 else f'{str(rows[0]["Direction"]).lower()} position'
     payload = html.escape(json.dumps({"sources": sources, "title": title}, separators=(",", ":")), quote=True)
