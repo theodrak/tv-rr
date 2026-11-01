@@ -41,6 +41,7 @@ DEFAULTS = {
     # workbook name fragment → a strategy's own columns: {"columns": [your columns, kept like the journal's],
     # "dropdowns": {column: [choices]}, "plugins": [python files with COLUMNS and compute(row, t0) → {column: value}],
     # "after": the column they follow (default: the end). A plugin column listed in "columns" is placed there too.
+    # "differs": {your column: another column} shades yours yellow when it is filled in and differs from the other.
     "workbooks": {},
 }
 
@@ -107,11 +108,11 @@ def gallery_for(wb):
 def extras_for(wb):
     """A strategy's own columns for a workbook, from every workbooks entry whose key appears in its file name
     (case-insensitive): {"columns": [...], "dropdowns": {...}, "plugins": [...], "after": column or None}."""
-    out = {"columns": [], "dropdowns": {}, "plugins": [], "after": None}
+    out = {"columns": [], "dropdowns": {}, "plugins": [], "after": None, "differs": {}}
     for frag, x in (cached().get("workbooks") or {}).items():
         if frag.lower() not in Path(wb).stem.lower(): continue
         out["columns"] += [c for c in x.get("columns", []) if c not in out["columns"]]
-        out["dropdowns"].update(x.get("dropdowns", {})); out["plugins"] += x.get("plugins", [])
+        out["dropdowns"].update(x.get("dropdowns", {})); out["differs"].update(x.get("differs", {})); out["plugins"] += x.get("plugins", [])
         out["after"] = x.get("after") or out["after"]
     return out
 

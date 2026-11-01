@@ -27,10 +27,13 @@ from prices import bars_for  # noqa: E402,F401  (re-exported for the analysis sk
 TZ, UTC = config.tz(), dt.timezone.utc
 ANALYSIS = Path(__file__).resolve().parents[2] / "tv-rr-analysis" / "scripts"
 RR_TYPES = {"LineToolRiskRewardLong": "Long", "LineToolRiskRewardShort": "Short"}
-COLS = ["Symbol", "Direction", "Entry time", "Chart", "TV chart", "Outcome", "Timeframe", "Entry", "Stop", "TP planned", "Risk pts",
-        "Reward pts", "Planned R:R", "Status", "Fill time", "Exit time", "Exit price", "Result pts", "Result R",
+COLS = ["Symbol", "Direction", "Fill time", "Chart", "TV chart", "Outcome", "Timeframe", "Entry", "Stop", "TP planned", "Risk pts",
+        "Reward pts", "Planned R:R", "Status", "Entry time", "Exit time", "Exit price", "Result pts", "Result R",
         "Check", "Confirmed outcome", "Note",
         "TradingView says", "TradingView exit", "Checked on", "Checked to", "Drawing id", "Entry (UTC)", "Last copied"]
+# Headers shown in the sheet where they differ from the names used here: the drawing's entry time is the candle it was
+# drawn on (the fill is often a minute or more into it), so the sheet calls it "Entry candle".
+HEADERS = {"Entry time": "Entry candle"}
 # Local-time columns, shown in the configured timezone. Older workbooks named them "Entry time (Sydney)" etc.
 TIME_COLS = ("Entry time", "Fill time", "Exit time", "TradingView exit", "Checked to")
 # Filled in by the user in Excel; the script never overwrites them
@@ -387,7 +390,9 @@ def load(path):
 
 
 def legacy_name(h):
-    """'Entry time (Sydney)' → 'Entry time': older workbooks put the timezone in the column name."""
+    """A header as the scripts name it: 'Entry candle' → 'Entry time' (HEADERS), and 'Entry time (Sydney)' → 'Entry time'
+    (older workbooks put the timezone in the column name)."""
+    h = {v: k for k, v in HEADERS.items()}.get(h, h)
     m = re.fullmatch(r"(.+) \((?!UTC\))[^)]+\)", str(h or ""))
     return m.group(1) if m and m.group(1) in TIME_COLS else h
 
@@ -409,9 +414,9 @@ def save(path, rows):
     lists = journal.read_lists(path) if journal.enabled(path) else None
     COLS = columns(lists is not None, path)
     wb = Workbook(); ws = wb.active; ws.title = "Trades"
-    ws.append(COLS)
+    ws.append([HEADERS.get(c, c) for c in COLS])
     for c in ws[1]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
-    ws.freeze_panes = "G2"  # header row and Symbol, Direction, Entry time, Chart, TV chart, Outcome stay in view
+    ws.freeze_panes = "G2"  # header row and Symbol, Direction, Fill time, Chart, TV chart, Outcome stay in view
     from openpyxl.comments import Comment
     ws.cell(1, COLS.index("Entry time") + 1).comment = Comment(f"Local times are shown in {config.tz_name()}.", "tv-rr")
     from openpyxl.worksheet.datavalidation import DataValidation
@@ -449,6 +454,14 @@ def save(path, rows):
         L = get_column_letter(COLS.index(c) + 1)
         x = DataValidation(type="list", formula1='"' + ",".join(map(str, choices)) + '"', allow_blank=True, showErrorMessage=False)
         ws.add_data_validation(x); x.add(f"{L}2:{L}{max(len(rows) + 1, 2)}"); ws.column_dimensions[L].width = 9
+        if all(isinstance(v, int) for v in choices):  # a number typed into an unformatted cell can come out as a date
+            for i in range(2, len(rows) + 2): ws[f"{L}{i}"].number_format = "0"
+    for c, other in config.extras_for(path)["differs"].items():  # your call, shaded when it disagrees with the worked-out one
+        if c not in COLS or other not in COLS: continue
+        from openpyxl.formatting.rule import FormulaRule
+        L, O = get_column_letter(COLS.index(c) + 1), get_column_letter(COLS.index(other) + 1)
+        ws.conditional_formatting.add(f"{L}2:{L}{max(len(rows) + 1, 2)}", FormulaRule(
+            formula=[f'AND(${L}2<>"",${L}2<>${O}2)'], fill=PatternFill("solid", bgColor="FFF59D")))
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 

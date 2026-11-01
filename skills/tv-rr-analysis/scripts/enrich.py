@@ -38,7 +38,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tv-rr-trades" / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import config, indicators, journal, prices  # noqa: E402
-from extract import UTC, bars_for, candle_path, legacy_name  # noqa: E402
+from extract import HEADERS, UTC, bars_for, candle_path, legacy_name  # noqa: E402
 
 TARGETS = [0.5, 0.75, 1, 1.5, 2, 2.5]
 BE_AT = 0.55
@@ -152,7 +152,8 @@ def enrich(path):
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     wb = load_workbook(path); ws = wb["Trades"]
-    for c in ws[1]: c.value = RENAMED.get(legacy_name(c.value), legacy_name(c.value))
+    for c in ws[1]: c.value = RENAMED.get(legacy_name(c.value), legacy_name(c.value))  # the scripts' names while it works
+    shown = lambda: [setattr(c, 'value', HEADERS.get(c.value, c.value)) for c in ws[1]]  # back to the sheet's headers
     for i in sorted((n for n, c in enumerate(ws[1], 1) if c.value in OBSOLETE), reverse=True): ws.delete_cols(i)
     head = [c.value for c in ws[1]]
     plug = plugins(path); plug_cols = [c for m in plug for c in m.COLUMNS]
@@ -251,7 +252,7 @@ def enrich(path):
     for c in NEW_COLS + plug_cols: ws.column_dimensions[get_column_letter(col[c])].width = 10
     ws.auto_filter.ref = ws.dimensions  # extract.py set it before these columns existed
     breakdown(wb, records)
-    wb.save(path)
+    shown(); wb.save(path)
     try: add_chart_links(path)
     except PermissionError: pass
     return records
