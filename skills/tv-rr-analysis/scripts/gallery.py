@@ -313,9 +313,10 @@ def anchor(t):
     return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
 
 
-def write_html(path, label, wbp, made, groups=()):
+def write_html(path, label, wbp, made, groups=(), extra_facts=()):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
-    groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters.
+    groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters;
+    extra_facts adds cells to each trade's facts table after Decision: (heading, value_of(trade)).
     Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     import html as h, os
@@ -360,10 +361,12 @@ def write_html(path, label, wbp, made, groups=()):
 
     def fact_table(t):
         top, notes = facts(t, links); cells = []
+        at = FACTS.index("Decision") + 1
+        top = top[:at] + [(n, str(f(t)), None) for n, f in extra_facts] + top[at:]
         for _, v, u in top:
             if u: cells.append('<td><a href="%s" target="_blank">%s</a></td>' % (h.escape(u), h.escape(v)))
             else: cells.append('<td class="%s">%s</td>' % ({"Win": "rw", "Loss": "rl", "BE": "rb"}.get(v, ""), h.escape(v)))
-        heads = "".join("<th>%s</th>" % h.escape(n) for n in FACTS)
+        heads = "".join("<th>%s</th>" % h.escape(n) for n in FACTS[:at] + tuple(n for n, _ in extra_facts) + FACTS[at:])
         note = "".join('<div><b>%s</b> %s</div>' % (h.escape(n), h.escape(v)) for n, v in notes)
         return ('<div class="scroll"><table class="facts"><tr>%s</tr><tr>%s</tr></table></div><div class="notes">%s</div>'
                 % (heads, "".join(cells), note))
