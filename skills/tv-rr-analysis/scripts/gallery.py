@@ -327,11 +327,14 @@ def anchor(t):
 
 def write_html(path, label, wbp, made, groups=(), extra_facts=(), ranges=()):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
+    A "VWAP side" filter (With / Against: price on the trade's side of the session VWAP) is added when the log has the column.
     groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters;
     extra_facts adds cells to each trade's facts table after Decision: (heading, value_of(trade));
     ranges adds From / To number filters: (title, key, number_of(trade) or None), key in lowercase letters.
     Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
+    if any(t.get("VWAP side") for t, _ in made):
+        groups = [("VWAP side", "vside", lambda t: t.get("VWAP side") or "–", ["With", "Against", "–"])] + list(groups)
     import html as h, os
     first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
