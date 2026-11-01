@@ -143,12 +143,12 @@ def draw_pair(r, label, tag, images_dir, elements):
     if len(ov["ema9"]) > 1: ov["ema9"][-1] = 0.2 * pc + 0.8 * ov["ema9"][-2]
     ov["kernel"][-1] = ov["kernel"][-2] if len(ov["kernel"]) > 1 else None  # the line is only known at a candle's close
     ov["vwap"][-1] = ov["vwap"][-2] if len(ov["vwap"]) > 1 else None
-    title_d = f"{fill_l:%a} {fill_l.day} {fill_l:%b %Y}"
+    title_d = f"{fill_l:%a} {fill_l.day} {fill_l:%b %Y %H:%M} ({config.tz_name().split('/')[-1].replace('_', ' ')})"  # the fill, local
     p1 = draw(sym, m, win_bars, ov, images_dir / f"{prices.safe(sym)} {label} {tag} entry.png", elements, lv,
               extra=lambda ax, ymin, ymax: (rr(ax, len(win_bars) - 1.5, len(win_bars) + 0.5, len(win_bars)),
                                             ax.text(len(win_bars) - 1, ymax - 0.11 * (ymax - ymin), "entry candle as\nit stood at the fill",
                                                     ha="center", va="top", fontsize=10, color="#6a1b9a", zorder=12)),
-              title=f"{title_d} — {label}: the chart at the entry ({fill_l:%H:%M})", subtitle=head, pad_after=PAD)
+              title=f"{title_d} — {label}: the chart at the entry", subtitle=head, pad_after=PAD)
     end = min(len(bars), j + AFTER + 1)
     fol = bars[start:end]; ov2 = {k: v[start:end] for k, v in ser.items()}
     p2 = draw(sym, m, fol, ov2, images_dir / f"{prices.safe(sym)} {label} {tag} follow.png", elements, lv,
