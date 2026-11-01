@@ -133,7 +133,7 @@ within 10 pts.
 **A strategy's own columns** go in the config, not in these scripts: `workbooks` › a fragment of the workbook's file
 name (e.g. `"9 Ema Retest"`, covering its back, forward and replay logs) › `columns` (the user's own, kept on every
 rebuild like the journal's), `dropdowns` (`{column: [choices]}`) and `plugins` (Python files with `COLUMNS` and
-`compute(row, t0) → {column: value}`, filled in by tv-rr-analysis after every save) and `after` (the column they follow, e.g. `"Decision"`; list a plugin column in `columns` to place it there too). The strategy's skill owns the plugin.
+`compute(row, t0) → {column: value}`, filled in by tv-rr-analysis after every save) and `after` (the column they follow, e.g. `"Decision"`; list a plugin column in `columns` to place it there too), and `differs` (`{your column: another}`: yours turns yellow when filled in and different, e.g. your call vs a worked-out one). The strategy's skill owns the plugin.
 
 ## Price data
 

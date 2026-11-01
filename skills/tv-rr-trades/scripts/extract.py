@@ -456,6 +456,12 @@ def save(path, rows):
         ws.add_data_validation(x); x.add(f"{L}2:{L}{max(len(rows) + 1, 2)}"); ws.column_dimensions[L].width = 9
         if all(isinstance(v, int) for v in choices):  # a number typed into an unformatted cell can come out as a date
             for i in range(2, len(rows) + 2): ws[f"{L}{i}"].number_format = "0"
+    for c, other in config.extras_for(path)["differs"].items():  # your call, shaded when it disagrees with the worked-out one
+        if c not in COLS or other not in COLS: continue
+        from openpyxl.formatting.rule import FormulaRule
+        L, O = get_column_letter(COLS.index(c) + 1), get_column_letter(COLS.index(other) + 1)
+        ws.conditional_formatting.add(f"{L}2:{L}{max(len(rows) + 1, 2)}", FormulaRule(
+            formula=[f'AND(${L}2<>"",${L}2<>${O}2)'], fill=PatternFill("solid", bgColor="FFF59D")))
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 
