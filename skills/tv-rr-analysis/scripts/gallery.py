@@ -387,6 +387,8 @@ nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decorati
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
 nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828} nav a.be{border-left-color:#9e9e9e} nav a.be span{color:#616161}
 nav a:hover{background:#eee} nav a.active{background:#e3f2fd}
+#order{display:block;margin:0 8px 8px;padding:3px 8px;font-size:12px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;color:#333}
+#order:hover{background:#eee}
 main{margin-left:230px;padding:0 28px 24px;max-width:1300px}
 header.top{position:sticky;top:0;z-index:10;background:#fff;padding:14px 0 10px;border-bottom:1px solid #e5e5e5}
 header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
@@ -421,11 +423,12 @@ td.rb{background:#fff8e1;color:#a66b00;font-weight:600}
 @media (max-width:800px){.bar{flex-direction:column} header.top{position:static} nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
 """
     js = """
+let holdMark=0;  // a trade picked with the keys stays selected while the page settles
 const links=[...document.querySelectorAll('nav a')], byId=Object.fromEntries(links.map(a=>[a.hash.slice(1),a]));
 function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id));const a=byId[id];
   if(a){const n=a.parentElement,r=a.getBoundingClientRect(),q=n.getBoundingClientRect();if(r.top<q.top||r.bottom>q.bottom)a.scrollIntoView({block:'nearest'})}}
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
-  if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
+  if(v&&Date.now()>holdMark)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
 const sel={res:new Set(),dec:new Set(),grade:new Set()""" + "".join(f",{k}:new Set()" for _, k, _, _ in groups) + """}, secs=[...document.querySelectorAll('main section')];
 const hasBE=secs.some(s=>s.dataset.res==='be');
@@ -478,10 +481,29 @@ function hh(){document.documentElement.style.setProperty('--hh',document.querySe
 hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
+// The sidebar's order: newest first, or oldest first like the workbook; the choice is remembered in this browser.
+const nav=document.querySelector('nav'), orderBtn=document.getElementById('order');
+function setOrder(oldest){const a=[...nav.querySelectorAll('a')].sort((x,y)=>links.indexOf(x)-links.indexOf(y));
+  (oldest?a.reverse():a).forEach(x=>nav.appendChild(x)); orderBtn.textContent=oldest?'Oldest first (as in Excel) ⇅':'Newest first ⇅';
+  orderBtn.dataset.oldest=oldest?'1':''; try{localStorage.setItem('tvrr-order',oldest?'oldest':'newest')}catch(e){}}
+orderBtn.onclick=()=>setOrder(!orderBtn.dataset.oldest);
+try{if(localStorage.getItem('tvrr-order')==='oldest')setOrder(true)}catch(e){}
+// After a trade is picked in the sidebar, ↑ / ↓ select the trade above / below it in the list (only those the filters
+// show) and jump the page to it, instead of scrolling. A click in the page hands the arrow keys back to scrolling.
+let navKeys=false;
+nav.addEventListener('click',e=>{if(e.target.closest('a'))navKeys=true});
+document.querySelector('main').addEventListener('mousedown',()=>navKeys=false);
+document.addEventListener('keydown',e=>{
+  if(!navKeys||lb.classList.contains('open')||(e.key!=='ArrowDown'&&e.key!=='ArrowUp')||e.target.closest?.('input,textarea,select'))return;
+  const vis=[...nav.querySelectorAll('a')].filter(a=>a.style.display!=='none');
+  const at=vis.findIndex(a=>a.classList.contains('active')), to=vis[at<0?0:at+(e.key==='ArrowDown'?1:-1)];
+  e.preventDefault(); if(!to)return;
+  const id=to.hash.slice(1), sec=document.getElementById(id);
+  holdMark=Date.now()+400; history.replaceState(null,'','#'+id); sec.scrollIntoView({behavior:'instant',block:'start'}); mark(id)});
 """
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
-<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3>{side}</nav>
+<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3><button id="order" title="Reverse the list">Newest first ⇅</button>{side}</nav>
 <main><header class="top"><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <div class="bar"><div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
 <div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
