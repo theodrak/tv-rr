@@ -325,10 +325,11 @@ def anchor(t):
     return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
 
 
-def write_html(path, label, wbp, made, groups=(), extra_facts=()):
+def write_html(path, label, wbp, made, groups=(), extra_facts=(), ranges=()):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
     groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters;
-    extra_facts adds cells to each trade's facts table after Decision: (heading, value_of(trade)).
+    extra_facts adds cells to each trade's facts table after Decision: (heading, value_of(trade));
+    ranges adds From / To number filters: (title, key, number_of(trade) or None), key in lowercase letters.
     Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     import html as h, os
@@ -338,10 +339,10 @@ def write_html(path, label, wbp, made, groups=(), extra_facts=()):
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
     num = lambda v: "" if v is None else f"{v}"
-    clear = lambda t: "" if t.get("Bars clear of EMA 9") in (None, "") else int(t["Bars clear of EMA 9"])
-    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" data-nclear="{clear(t)}" '
+    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
-                       f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups))
+                       f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups)
+                       + "".join(f' data-{k}="{"" if f(t) is None else f(t)}"' for _, k, f in ranges))
     side = "".join(
         f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
         f'<b>{shown_time(t):%a} {shown_time(t).day} {shown_time(t):%b %H:%M}</b>'
@@ -357,13 +358,13 @@ def write_html(path, label, wbp, made, groups=(), extra_facts=()):
         btns = "".join(f'<button data-g="{key}" data-v="{h.escape(v)}">{h.escape(lbl)} <i>{n}</i></button>' for v, lbl, n in items)
         return f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns">{btns}</div></div>'
 
-    def clear_range(made, clear):
-        """From / To boxes for the "Bars clear of EMA 9" column; nothing when no trade has it."""
-        vals = [clear(t) for t, _ in made if clear(t) != ""]
+    def range_box(title, key, f):
+        """From / To boxes for one ranges entry; nothing when no trade has a value."""
+        vals = [f(t) for t, _ in made if f(t) is not None]
         if not vals: return ""
-        return ('<div class="grp"><div class="gt">Bars clear of EMA 9</div><div class="btns rng">'
-                f'from <input id="cmin" type="number" min="0" max="48" placeholder="any"> to '
-                f'<input id="cmax" type="number" min="0" max="48" placeholder="any"> <i>{min(vals)}–{max(vals)} in this log</i></div></div>')
+        return (f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns rng" data-k="{key}">'
+                'from <input class="rmin" type="number" placeholder="any"> to '
+                f'<input class="rmax" type="number" placeholder="any"> <i>{min(vals):g}–{max(vals):g} in this log</i></div></div>')
 
     def dims(p):
         import struct
@@ -453,11 +454,11 @@ function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp
     +`<td class="${r>=0?'tp':'sl'}">${n?(r>=0?'+':'')+r.toFixed(1)+'R':'–'}</td><td>${avg(num('mae'))}</td><td>${avg(num('mfe'))}</td></tr>`}
 function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th>'+(hasBE?'<th>BE</th>':'')+'<th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
   +row('All',list)+row('Long',list.filter(s=>s.dataset.dir==='Long'))+row('Short',list.filter(s=>s.dataset.dir==='Short'))+'</table>'}
-// "Bars clear of EMA 9" range: From / To, either may be blank (no limit); trades without the value drop out once one is set
-const cmin=document.getElementById('cmin'), cmax=document.getElementById('cmax');
-function inRange(e){if(!cmin)return true; const lo=cmin.value===''?null:+cmin.value, hi=cmax.value===''?null:+cmax.value;
-  if(lo===null&&hi===null)return true; const v=e.dataset.nclear===''?NaN:+e.dataset.nclear;
-  return !isNaN(v)&&(lo===null||v>=lo)&&(hi===null||v<=hi)}
+// From / To ranges (write_html's ranges): either box may be blank (no limit); trades without the value drop out once one is set
+const rngs=[...document.querySelectorAll('.rng[data-k]')];
+function inRange(e){return rngs.every(r=>{const a=r.querySelector('.rmin').value, b=r.querySelector('.rmax').value;
+  if(a===''&&b==='')return true; const v=e.dataset[r.dataset.k]===''?NaN:+e.dataset[r.dataset.k];
+  return !isNaN(v)&&(a===''||v>=+a)&&(b===''||v<=+b)})}
 function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]))&&inRange(e);
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
@@ -465,8 +466,8 @@ function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||
 document.getElementById('ostats').innerHTML=stats(secs);
 document.querySelectorAll('header .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
   if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
-if(cmin){cmin.oninput=apply; cmax.oninput=apply}
-document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); if(cmin){cmin.value='';cmax.value=''}
+rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.oninput=apply));
+document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.value=''));
   document.querySelectorAll('header .grp button').forEach(b=>b.classList.remove('on'));apply()};
 apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
@@ -531,7 +532,7 @@ document.addEventListener('keydown',e=>{
 {group("Outcome", "res", [(c, w, n) for c, w, n in ((c, w, sum(res_of(t)[0] == c for t, _ in made)) for c, _, w, _ in OUTCOMES.values()) if n or c != "be"])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 {"".join(group(title, k, [(v, v, n) for v in order if (n := sum(str(f(t)) == v for t, _ in made))]) for title, k, f, order in groups)}
-{clear_range(made, clear)}
+{"".join(range_box(*r) for r in ranges)}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to enlarge it, use ← → to step through the charts shown, and close it with the red cross, a click outside it, a double-click or Escape.</p>

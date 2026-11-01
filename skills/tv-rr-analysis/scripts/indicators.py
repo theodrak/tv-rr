@@ -251,23 +251,6 @@ def kernel_series(bars, h=8, r=8.0, x=25):
     return out
 
 
-def bars_clear(sym, t, n, sign, max_back=48):
-    """The run of closed base bars before t that sat wholly on the trade's side of EMA(n) (low above it for a long,
-    sign 1; high below it for a short): how many bars in a row, counted back from the last such bar before the entry.
-    0 if none within max_back bars; a run reaching max_back is reported as max_back."""
-    bars, m, i = _closed_index(sym, t)
-    if bars is None or i < n + max_back: return None
-    k = ("ema", sym, n)
-    if k not in _cache: _cache[k] = ema([b["c"] for b in bars], n)
-    line = _cache[k]
-    clear = lambda j: bars[j]["l"] > line[j] if sign > 0 else bars[j]["h"] < line[j]
-    j = i
-    while j > i - max_back and not clear(j): j -= 1
-    run = 0
-    while j > i - max_back and clear(j): run += 1; j -= 1
-    return run
-
-
 def sma(vals, n):
     out, s = [], 0.0
     for i, v in enumerate(vals):
