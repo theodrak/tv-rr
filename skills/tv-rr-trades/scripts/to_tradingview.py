@@ -17,6 +17,7 @@ import argparse, copy, datetime as dt, html, json, random, re, string, sys, uuid
 from pathlib import Path
 from openpyxl import load_workbook
 import config
+from extract import legacy_name
 
 TEMPLATE = Path(__file__).with_name("position_template.json")
 BAR_SECONDS = {"1": 60, "3": 180, "5": 300, "15": 900, "30": 1800, "60": 3600, "240": 14400, "D": 86400}
@@ -24,7 +25,7 @@ BAR_SECONDS = {"1": 60, "3": 180, "5": 300, "15": 900, "30": 1800, "60": 3600, "
 
 def rows_from(path):
     ws = load_workbook(path, data_only=True, read_only=True)["Trades"]
-    it = ws.iter_rows(values_only=True); hdr = next(it)
+    it = ws.iter_rows(values_only=True); hdr = [legacy_name(h) for h in next(it)]
     return [dict(zip(hdr, r)) for r in it if any(v is not None for v in r)]
 
 
