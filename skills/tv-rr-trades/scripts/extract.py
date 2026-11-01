@@ -317,8 +317,46 @@ def confirm(rows, requests):
 
 
 def key(r):
-    # the drawing id survives moving the drawing (new entry time, other timeframe), so it alone identifies the trade
+    # the drawing id survives moving the drawing (new entry time, other timeframe), so it alone identifies the trade;
+    # pasting renews it, which relink() handles
     return (str(r["Symbol"]), str(r["Drawing id"]))
+
+
+TITLE_ID = re.compile(r"·\s*id\s+([A-Za-z0-9]+)\s*$")
+TITLE_TRADE = re.compile(r"(\d{1,2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}) (Long|Short)\b")
+
+
+def relink(new, titles, old):
+    """Pasting drawings into TradingView gives them new ids, so a trade put back on the chart by to_tradingview.py and
+    copied out again would look new. Find its row from the drawing's name instead: the "· id X" it was given, else the
+    entry date, time and direction in it (names written before the id was added). The row takes the drawing's new id,
+    so later copies of the same drawing match directly. Returns the drawings relinked."""
+    on_clip = {key(r) for r in new}; done = []
+    by_time = {}
+    for k, r in old.items():
+        if isinstance(r.get("Entry time"), dt.datetime): by_time.setdefault((k[0], r["Direction"], r["Entry time"]), []).append(k)
+    for r, title in zip(new, titles):
+        if key(r) in old or not title: continue
+        sym = str(r["Symbol"]); hit = None
+        if m := TITLE_ID.search(title): hit = (sym, m.group(1))
+        elif m := TITLE_TRADE.search(title):
+            try: ks = by_time.get((sym, m.group(2), dt.datetime.strptime(m.group(1), "%d %b %y %H:%M")), [])
+            except ValueError: ks = []
+            hit = ks[0] if len(ks) == 1 else None
+        if not hit or hit not in old or hit in on_clip: continue
+        prev = old.pop(hit); prev["Drawing id"] = r["Drawing id"]; old[key(r)] = prev; done.append(r)
+    return done
+
+
+def changes(prev, r):
+    """What moved between the logged trade and the copied drawing: entry time, entry, stop, TP."""
+    out = []
+    for c in ("Entry time", "Entry", "Stop", "TP planned"):
+        a, b = prev.get(c), r.get(c)
+        if isinstance(a, dt.datetime) and isinstance(b, dt.datetime):
+            if a != b: out.append(f"{c} {a:%d %b %H:%M} → {b:%d %b %H:%M}")
+        elif a is not None and b is not None and abs(float(a) - float(b)) > 1e-9: out.append(f"{c} {a:,} → {b:,}")
+    return out
 
 
 def load(path):
@@ -443,6 +481,7 @@ if __name__ == "__main__":
         if lt and not config.symbol(r["Symbol"])["tick"]: learned[r["Symbol"]] = lt
         if w: warns.append(w)
     old = {key(r): r for r in load(path)}
+    relinked = relink(new, [so.get("state", {}).get("title") or "" for so in found], old)
     confirmed = confirm(old.values(), a.confirm or [])
     has_journal = journal.enabled(path)
     if a.remove:
@@ -459,9 +498,11 @@ if __name__ == "__main__":
             print(f"saved: {path} ({len(old)} trades)")
         sys.exit(0)
     added = sum(1 for r in new if key(r) not in old); updated = len(new) - added
+    moved = []
     for r in new:
         prev = old.get(key(r))
         if prev:
+            if ch := changes(prev, r): moved.append((r, ch))
             same = all(prev.get(c) == r.get(c) for c in ("Entry", "Stop", "TP planned"))
             for c in USER_COLS: r[c] = prev.get(c) if same else None
             for c in journal.KEEP + list(KEEP_COLS): r[c] = prev.get(c)  # your notes and links stay even when the levels move
@@ -487,6 +528,10 @@ if __name__ == "__main__":
               + (" — dry run, nothing written" if a.dry_run else ""))
         print("updated from the clipboard:")
         for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r) + (f"  → {a.decision}" if a.decision else ""))
+        if relinked: print(f"{len(relinked)} matched to their logged trade by the drawing's name (TradingView gave them new ids on paste)")
+        if moved:
+            print("amended since logged:")
+            for r, ch in moved: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  " + "; ".join(ch))
     todo = [r for r in rows if str(r.get("Check") or "").startswith("CONFIRM")]
     if todo:
         print(f"{len(todo)} to confirm in Excel (set 'Confirmed outcome'):")

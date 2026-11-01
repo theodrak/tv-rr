@@ -79,8 +79,10 @@ TradingView chart with ⌘V. Use when the user asks to put trades back on a char
 - **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
 - **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
   workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
-- **It keeps the trade's drawing id**, so copying the drawing back out of TradingView and logging it updates its row
-  instead of adding a duplicate.
+- **TradingView gives pasted drawings new ids**, so each drawing's name ends "· id <the row's id>". When it is copied
+  back out and logged, `extract.py` finds the row from that id (or, for names without one, from the entry date, time and
+  direction in the name), updates it instead of adding a duplicate, moves the row to the new id, and lists under
+  "amended since logged" any entry time, entry, stop or TP that changed.
 - Entry, stop and TP come from the row (needs the symbol's tick in the config); a closed trade gets its close point at
   the exit TradingView drew, else the logged exit. Style comes from `scripts/position_template.json`.
 - macOS only for the clipboard. Elsewhere, `--out FILE.html` writes the clip to a file.
@@ -195,6 +197,7 @@ The claude.ai **TradingView** connector can fill recent gaps without an export. 
 - **Exit point.** The exit is `points[3]`, where TradingView shows the TP or stop being hit. `points[1]` is only the box's right edge. A drawing with no 4th point never closed.
 - **Stop and TP** come from `stopLevel` / `profitLevel`, which are tick counts. The tick is confirmed from the exit point, otherwise read from the config or `--tick`. **Never infer it from the entry's decimals**: an entry of 25172 does not mean a tick of 1.
 - **Duplicates.** Rows are keyed on symbol + drawing id, so copying a drawing again, even after moving it, updates its row.
+  A drawing pasted from `to_tradingview.py` has a new id but is matched by its name (see above).
 - **Every row is re-checked on every run:**
   - **1-minute bars first.** When they cover the trade, the outcome is re-derived from them whatever TradingView shows. The trade is flagged only if the call was decided inside one 1m candle. When the fill, stop and TP fall in separate 1m candles, the 1m result stands even if TradingView disagrees (its tool can't order a stop and TP inside one chart candle); the Note records what TradingView showed.
   - **Without 1m bars,** TradingView's exit is the record when it falls after the candle the order filled in. It is re-derived from the bars when it falls in the entry or fill candle (TradingView counts a level anywhere in that candle's range, even before the fill), when its close is at neither the TP nor the stop, or when it shows no exit.
