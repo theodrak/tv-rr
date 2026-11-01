@@ -38,6 +38,10 @@ DEFAULTS = {
     "gallery": {"elements": DEFAULT_ELEMENTS, "images_dir": None, "notes_dir": None, "link_style": "obsidian",
                 "timeframe": None, "format": ["html"],
                 "workbooks": {}},  # workbook name fragment → gallery settings for those workbooks, e.g. their own elements
+    # workbook name fragment → a strategy's own columns: {"columns": [your columns, kept like the journal's],
+    # "dropdowns": {column: [choices]}, "plugins": [python files with COLUMNS and compute(row, t0) → {column: value}],
+    # "after": the column they follow (default: the end). A plugin column listed in "columns" is placed there too.
+    "workbooks": {},
 }
 
 
@@ -97,6 +101,18 @@ def gallery_for(wb):
     out = {k: v for k, v in g.items() if k != "workbooks"}
     for frag, over in (g.get("workbooks") or {}).items():
         if frag.lower() in Path(wb).stem.lower(): out.update(over)
+    return out
+
+
+def extras_for(wb):
+    """A strategy's own columns for a workbook, from every workbooks entry whose key appears in its file name
+    (case-insensitive): {"columns": [...], "dropdowns": {...}, "plugins": [...], "after": column or None}."""
+    out = {"columns": [], "dropdowns": {}, "plugins": [], "after": None}
+    for frag, x in (cached().get("workbooks") or {}).items():
+        if frag.lower() not in Path(wb).stem.lower(): continue
+        out["columns"] += [c for c in x.get("columns", []) if c not in out["columns"]]
+        out["dropdowns"].update(x.get("dropdowns", {})); out["plugins"] += x.get("plugins", [])
+        out["after"] = x.get("after") or out["after"]
     return out
 
 

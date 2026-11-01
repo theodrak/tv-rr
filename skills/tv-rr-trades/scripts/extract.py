@@ -317,8 +317,48 @@ def confirm(rows, requests):
 
 
 def key(r):
-    # the drawing id survives moving the drawing (new entry time, other timeframe), so it alone identifies the trade
+    # the drawing id survives moving the drawing (new entry time, other timeframe), so it alone identifies the trade;
+    # pasting renews it, which relink() handles
     return (str(r["Symbol"]), str(r["Drawing id"]))
+
+
+TITLE_ID = re.compile(r"·\s*id\s+([A-Za-z0-9]+)\s*$")
+TITLE_TRADE = re.compile(r"(\d{1,2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}) (Long|Short)\b")
+
+
+def relink(new, titles, old):
+    """Pasting drawings into TradingView gives them new ids, so a trade put back on the chart by to_tradingview.py and
+    copied out again would look new. Find its row from the drawing's name instead: the "· id X" it was given, else the
+    date, time (the fill, or the entry for older names) and direction in it, for names without an id. The row takes the drawing's new id,
+    so later copies of the same drawing match directly. Returns the drawings relinked."""
+    on_clip = {key(r) for r in new}; done = []
+    by_time = {}
+    for k, r in old.items():
+        for c in ("Fill time", "Entry time"):
+            if isinstance(r.get(c), dt.datetime) and k not in by_time.get((k[0], r["Direction"], r[c]), []):
+                by_time.setdefault((k[0], r["Direction"], r[c]), []).append(k)
+    for r, title in zip(new, titles):
+        if key(r) in old or not title: continue
+        sym = str(r["Symbol"]); hit = None
+        if m := TITLE_ID.search(title): hit = (sym, m.group(1))
+        elif m := TITLE_TRADE.search(title):
+            try: ks = by_time.get((sym, m.group(2), dt.datetime.strptime(m.group(1), "%d %b %y %H:%M")), [])
+            except ValueError: ks = []
+            hit = ks[0] if len(ks) == 1 else None
+        if not hit or hit not in old or hit in on_clip: continue
+        prev = old.pop(hit); prev["Drawing id"] = r["Drawing id"]; old[key(r)] = prev; done.append(r)
+    return done
+
+
+def changes(prev, r):
+    """What moved between the logged trade and the copied drawing: entry time, entry, stop, TP."""
+    out = []
+    for c in ("Entry time", "Entry", "Stop", "TP planned"):
+        a, b = prev.get(c), r.get(c)
+        if isinstance(a, dt.datetime) and isinstance(b, dt.datetime):
+            if a != b: out.append(f"{c} {a:%d %b %H:%M} → {b:%d %b %H:%M}")
+        elif a is not None and b is not None and abs(float(a) - float(b)) > 1e-9: out.append(f"{c} {a:,} → {b:,}")
+    return out
 
 
 def load(path):
@@ -352,9 +392,14 @@ def legacy_name(h):
     return m.group(1) if m and m.group(1) in TIME_COLS else h
 
 
-def columns(with_journal):
-    """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py)."""
-    return list(COLS) + (journal.COLS if with_journal else [])
+def columns(with_journal, path=None):
+    """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py),
+    and the workbook's own columns from the config (config.extras_for) after its "after" column, else at the end."""
+    base = list(COLS) + (journal.COLS if with_journal else [])
+    if not path: return base
+    x = config.extras_for(path); own = [c for c in x["columns"] if c not in base]
+    at = base.index(x["after"]) + 1 if x["after"] in base else len(base)
+    return base[:at] + own + base[at:]
 
 
 def save(path, rows):
@@ -362,7 +407,7 @@ def save(path, rows):
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     lists = journal.read_lists(path) if journal.enabled(path) else None
-    COLS = columns(lists is not None)
+    COLS = columns(lists is not None, path)
     wb = Workbook(); ws = wb.active; ws.title = "Trades"
     ws.append(COLS)
     for c in ws[1]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
@@ -399,6 +444,11 @@ def save(path, rows):
     for i, c in enumerate(COLS, 1): ws.column_dimensions[get_column_letter(i)].width = widths.get(c, 12)
     if lists is not None:
         journal.style(ws, COLS, len(rows)); journal.write_lists(wb, lists)
+    for c, choices in config.extras_for(path)["dropdowns"].items():
+        if c not in COLS: continue
+        L = get_column_letter(COLS.index(c) + 1)
+        x = DataValidation(type="list", formula1='"' + ",".join(map(str, choices)) + '"', allow_blank=True, showErrorMessage=False)
+        ws.add_data_validation(x); x.add(f"{L}2:{L}{max(len(rows) + 1, 2)}"); ws.column_dimensions[L].width = 9
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 
@@ -443,6 +493,7 @@ if __name__ == "__main__":
         if lt and not config.symbol(r["Symbol"])["tick"]: learned[r["Symbol"]] = lt
         if w: warns.append(w)
     old = {key(r): r for r in load(path)}
+    relinked = relink(new, [so.get("state", {}).get("title") or "" for so in found], old)
     confirmed = confirm(old.values(), a.confirm or [])
     has_journal = journal.enabled(path)
     if a.remove:
@@ -459,12 +510,15 @@ if __name__ == "__main__":
             print(f"saved: {path} ({len(old)} trades)")
         sys.exit(0)
     added = sum(1 for r in new if key(r) not in old); updated = len(new) - added
+    moved = []
     for r in new:
         prev = old.get(key(r))
         if prev:
+            if ch := changes(prev, r): moved.append((r, ch))
             same = all(prev.get(c) == r.get(c) for c in ("Entry", "Stop", "TP planned"))
             for c in USER_COLS: r[c] = prev.get(c) if same else None
-            for c in journal.KEEP + list(KEEP_COLS): r[c] = prev.get(c)  # your notes and links stay even when the levels move
+            for c in journal.KEEP + list(KEEP_COLS) + config.extras_for(path)["columns"]:
+                r[c] = prev.get(c)  # your notes and links stay even when the levels move
             if not same and prev.get("Confirmed outcome"): r["Note"] = "levels changed since you confirmed it — confirm again"
         if a.decision: r["Decision"] = a.decision
         old[key(r)] = r
@@ -487,6 +541,10 @@ if __name__ == "__main__":
               + (" — dry run, nothing written" if a.dry_run else ""))
         print("updated from the clipboard:")
         for r in sorted(new, key=lambda r: r["Entry (UTC)"]): print("  " + fmt(r) + (f"  → {a.decision}" if a.decision else ""))
+        if relinked: print(f"{len(relinked)} matched to their logged trade by the drawing's name (TradingView gave them new ids on paste)")
+        if moved:
+            print("amended since logged:")
+            for r, ch in moved: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  " + "; ".join(ch))
     todo = [r for r in rows if str(r.get("Check") or "").startswith("CONFIRM")]
     if todo:
         print(f"{len(todo)} to confirm in Excel (set 'Confirmed outcome'):")

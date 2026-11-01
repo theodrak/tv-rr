@@ -3,9 +3,10 @@
 usage: to_tradingview.py [--workbook PATH] [--id ID ...] [--date YYYY-MM-DD[..YYYY-MM-DD]] [--direction long|short]
                          [--outcome TP|Stop|…] [--last N] [--min-minutes 40] [--label TEXT] [--out FILE.html] [--dry-run]
 
-At least one selector (--id, --date, --direction, --outcome, --last) is required. Filters combine. Each drawing keeps
-the trade's drawing id, so copying it back out of TradingView updates its row instead of adding a new one, and is
-named "<label> <entry date and time> <direction> <outcome> <result R>" (label defaults to the workbook's name, less
+At least one selector (--id, --date, --direction, --outcome, --last) is required. Filters combine. TradingView gives
+pasted drawings new ids, so each drawing carries the trade's id in its name; extract.py finds the row from it when the
+drawing is copied back out, and updates it even if the entry was moved. Each is
+named "<label> <fill date and time (else entry)> <direction> <outcome> <result R> · id <id>" (label defaults to the workbook's name, less
 "Back/Forward/Replay Testing"). Entry, stop and TP are rebuilt from the row; a closed trade gets its close point at
 the exit TradingView drew (else the logged exit). Each box is at least --min-minutes wide (default 40) so
 short trades stay visible; the close point stays at the real exit. The style comes from position_template.json.
@@ -49,8 +50,9 @@ def drawing(row, base, label, min_minutes=40):
     st.update(symbol=sym, interval=tf,
               stopLevel=round(abs(row["Entry"] - row["Stop"]) / tick),
               profitLevel=round(abs(row["TP planned"] - row["Entry"]) / tick),
-              title=" ".join(x for x in (label, f'{row["Entry time"]:%-d %b %y %H:%M}', str(row["Direction"]),
-                                         str(row.get("Outcome") or ""), f"{r:+g}R" if isinstance(r, (int, float)) else "") if x))
+              title=" ".join(x for x in (label, f'{row.get("Fill time") or row["Entry time"]:%-d %b %y %H:%M}', str(row["Direction"]),
+                                         str(row.get("Outcome") or ""), f"{r:+g}R" if isinstance(r, (int, float)) else "",
+                                         f"· id {src['id']}") if x))  # TradingView renews the id on paste; the name keeps it
     bar = BAR_SECONDS.get(tf, 300)
     entry_t = epoch(row["Entry (UTC)"]); shown_offset = row["Entry time"] - row["Entry (UTC)"]
     exit_shown = row.get("TradingView exit") or row.get("Exit time")

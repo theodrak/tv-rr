@@ -143,17 +143,16 @@ def draw_pair(r, label, tag, images_dir, elements):
     if len(ov["ema9"]) > 1: ov["ema9"][-1] = 0.2 * pc + 0.8 * ov["ema9"][-2]
     ov["kernel"][-1] = ov["kernel"][-2] if len(ov["kernel"]) > 1 else None  # the line is only known at a candle's close
     ov["vwap"][-1] = ov["vwap"][-2] if len(ov["vwap"]) > 1 else None
-    title_d = f"{fill_l:%a} {fill_l.day} {fill_l:%b %Y}"
     p1 = draw(sym, m, win_bars, ov, images_dir / f"{prices.safe(sym)} {label} {tag} entry.png", elements, lv,
               extra=lambda ax, ymin, ymax: (rr(ax, len(win_bars) - 1.5, len(win_bars) + 0.5, len(win_bars)),
                                             ax.text(len(win_bars) - 1, ymax - 0.11 * (ymax - ymin), "entry candle as\nit stood at the fill",
                                                     ha="center", va="top", fontsize=10, color="#6a1b9a", zorder=12)),
-              title=f"{title_d} — {label}: the chart at the entry ({fill_l:%H:%M})", subtitle=head, pad_after=PAD)
+              title=chart_title(fill_l, label), subtitle=head, pad_after=PAD)
     end = min(len(bars), j + AFTER + 1)
     fol = bars[start:end]; ov2 = {k: v[start:end] for k, v in ser.items()}
     p2 = draw(sym, m, fol, ov2, images_dir / f"{prices.safe(sym)} {label} {tag} follow.png", elements, lv,
               extra=lambda ax, ymin, ymax: rr(ax, i - start - 0.5, j - start + 0.5, len(fol), exit_k=j - start, span=ymax - ymin),
-              title=f"{title_d} — {label}: follow-through ({r['Outcome']})", subtitle=head, pad_after=PAD)
+              title=chart_title(fill_l, label, r["Outcome"]), subtitle=head, pad_after=PAD)
     return p1, p2
 
 
@@ -259,8 +258,21 @@ def facts(t, links):
     return top, [(n, txt(n)) for n in NOTES]
 
 
+def chart_title(fill, label, outcome=None):
+    """A chart's title: the fill's date, time and timezone, then what the chart is. The entry chart without an outcome,
+    the follow-through with it. Other skills drawing trade charts call this, so every gallery reads the same."""
+    tz = config.tz_name().split("/")[-1].replace("_", " ")
+    what = f"follow-through ({outcome})" if outcome else "the chart at the entry"
+    return f"{fill:%a} {fill.day} {fill:%b %Y %H:%M} ({tz}) — {label}: {what}"
+
+
+def shown_time(t):
+    """The time a trade is named by: its fill, as on its charts, else the drawing's entry time."""
+    return t.get("Fill time") or t["Entry time"]
+
+
 def heading(t):
-    d = t["Entry time"]; res = res_of(t)[1]
+    d = shown_time(t); res = res_of(t)[1]
     return f"{d:%a} {d.day} {d:%b %Y} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}"
 
 
@@ -313,8 +325,11 @@ def anchor(t):
     return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
 
 
-def write_html(path, label, wbp, made):
+def write_html(path, label, wbp, made, groups=(), extra_facts=(), ranges=()):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
+    groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters;
+    extra_facts adds cells to each trade's facts table after Decision: (heading, value_of(trade));
+    ranges adds From / To number filters: (title, key, number_of(trade) or None), key in lowercase letters.
     Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     import html as h, os
@@ -324,13 +339,13 @@ def write_html(path, label, wbp, made):
     dec = lambda t: str(t.get("Decision") or "Taken")
     grade = lambda t: str(t.get("Grade") or "Ungraded")
     num = lambda v: "" if v is None else f"{v}"
-    clear = lambda t: "" if t.get("Bars clear of EMA 9") in (None, "") else int(t["Bars clear of EMA 9"])
-    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" data-nclear="{clear(t)}" '
+    attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
-                       f'data-dir="{h.escape(t["Direction"])}"')
+                       f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups)
+                       + "".join(f' data-{k}="{"" if f(t) is None else f(t)}"' for _, k, f in ranges))
     side = "".join(
         f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
-        f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
+        f'<b>{shown_time(t):%a} {shown_time(t).day} {shown_time(t):%b %H:%M}</b>'
         f'<span>{res_of(t)[2]} · {h.escape(t["Direction"])}'
         + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in newest_first(made))
     def values(f):
@@ -343,13 +358,13 @@ def write_html(path, label, wbp, made):
         btns = "".join(f'<button data-g="{key}" data-v="{h.escape(v)}">{h.escape(lbl)} <i>{n}</i></button>' for v, lbl, n in items)
         return f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns">{btns}</div></div>'
 
-    def clear_range(made, clear):
-        """From / To boxes for the "Bars clear of EMA 9" column; nothing when no trade has it."""
-        vals = [clear(t) for t, _ in made if clear(t) != ""]
+    def range_box(title, key, f):
+        """From / To boxes for one ranges entry; nothing when no trade has a value."""
+        vals = [f(t) for t, _ in made if f(t) is not None]
         if not vals: return ""
-        return ('<div class="grp"><div class="gt">Bars clear of EMA 9</div><div class="btns rng">'
-                f'from <input id="cmin" type="number" min="0" max="48" placeholder="any"> to '
-                f'<input id="cmax" type="number" min="0" max="48" placeholder="any"> <i>{min(vals)}–{max(vals)} in this log</i></div></div>')
+        return (f'<div class="grp"><div class="gt">{h.escape(title)}</div><div class="btns rng" data-k="{key}">'
+                'from <input class="rmin" type="number" placeholder="any"> to '
+                f'<input class="rmax" type="number" placeholder="any"> <i>{min(vals):g}–{max(vals):g} in this log</i></div></div>')
 
     def dims(p):
         import struct
@@ -359,10 +374,12 @@ def write_html(path, label, wbp, made):
 
     def fact_table(t):
         top, notes = facts(t, links); cells = []
+        at = FACTS.index("Decision") + 1
+        top = top[:at] + [(n, str(f(t)), None) for n, f in extra_facts] + top[at:]
         for _, v, u in top:
             if u: cells.append('<td><a href="%s" target="_blank">%s</a></td>' % (h.escape(u), h.escape(v)))
             else: cells.append('<td class="%s">%s</td>' % ({"Win": "rw", "Loss": "rl", "BE": "rb"}.get(v, ""), h.escape(v)))
-        heads = "".join("<th>%s</th>" % h.escape(n) for n in FACTS)
+        heads = "".join("<th>%s</th>" % h.escape(n) for n in FACTS[:at] + tuple(n for n, _ in extra_facts) + FACTS[at:])
         note = "".join('<div><b>%s</b> %s</div>' % (h.escape(n), h.escape(v)) for n, v in notes)
         return ('<div class="scroll"><table class="facts"><tr>%s</tr><tr>%s</tr></table></div><div class="notes">%s</div>'
                 % (heads, "".join(cells), note))
@@ -386,6 +403,8 @@ nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decorati
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
 nav a.tp{border-left-color:#43a047} nav a.tp span{color:#2e7d32} nav a.sl{border-left-color:#e53935} nav a.sl span{color:#c62828} nav a.be{border-left-color:#9e9e9e} nav a.be span{color:#616161}
 nav a:hover{background:#eee} nav a.active{background:#e3f2fd}
+#order{display:block;margin:0 8px 8px;padding:3px 8px;font-size:12px;border:1px solid #ccc;border-radius:5px;background:#fff;cursor:pointer;color:#333}
+#order:hover{background:#eee}
 main{margin-left:230px;padding:0 28px 24px;max-width:1300px}
 header.top{position:sticky;top:0;z-index:10;background:#fff;padding:14px 0 10px;border-bottom:1px solid #e5e5e5}
 header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
@@ -420,13 +439,14 @@ td.rb{background:#fff8e1;color:#a66b00;font-weight:600}
 @media (max-width:800px){.bar{flex-direction:column} header.top{position:static} nav{position:static;width:auto;max-height:40vh;border-right:0;border-bottom:1px solid #e5e5e5} main{margin-left:0;padding:16px}}
 """
     js = """
+let holdMark=0;  // a trade picked with the keys stays selected while the page settles
 const links=[...document.querySelectorAll('nav a')], byId=Object.fromEntries(links.map(a=>[a.hash.slice(1),a]));
 function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id));const a=byId[id];
   if(a){const n=a.parentElement,r=a.getBoundingClientRect(),q=n.getBoundingClientRect();if(r.top<q.top||r.bottom>q.bottom)a.scrollIntoView({block:'nearest'})}}
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
-  if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
+  if(v&&Date.now()>holdMark)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
-const sel={res:new Set(),dec:new Set(),grade:new Set()}, secs=[...document.querySelectorAll('main section')];
+const sel={res:new Set(),dec:new Set(),grade:new Set()""" + "".join(f",{k}:new Set()" for _, k, _, _ in groups) + """}, secs=[...document.querySelectorAll('main section')];
 const hasBE=secs.some(s=>s.dataset.res==='be');
 function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,l=list.filter(s=>s.dataset.res==='sl').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
   avg=a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):'–',r=num('r').reduce((x,y)=>x+y,0);
@@ -434,11 +454,11 @@ function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp
     +`<td class="${r>=0?'tp':'sl'}">${n?(r>=0?'+':'')+r.toFixed(1)+'R':'–'}</td><td>${avg(num('mae'))}</td><td>${avg(num('mfe'))}</td></tr>`}
 function stats(list){return '<table><tr><th></th><th>Trades</th><th>Won</th><th>Lost</th>'+(hasBE?'<th>BE</th>':'')+'<th>Win %</th><th>Net R</th><th>MAE</th><th>MFE</th></tr>'
   +row('All',list)+row('Long',list.filter(s=>s.dataset.dir==='Long'))+row('Short',list.filter(s=>s.dataset.dir==='Short'))+'</table>'}
-// "Bars clear of EMA 9" range: From / To, either may be blank (no limit); trades without the value drop out once one is set
-const cmin=document.getElementById('cmin'), cmax=document.getElementById('cmax');
-function inRange(e){if(!cmin)return true; const lo=cmin.value===''?null:+cmin.value, hi=cmax.value===''?null:+cmax.value;
-  if(lo===null&&hi===null)return true; const v=e.dataset.nclear===''?NaN:+e.dataset.nclear;
-  return !isNaN(v)&&(lo===null||v>=lo)&&(hi===null||v<=hi)}
+// From / To ranges (write_html's ranges): either box may be blank (no limit); trades without the value drop out once one is set
+const rngs=[...document.querySelectorAll('.rng[data-k]')];
+function inRange(e){return rngs.every(r=>{const a=r.querySelector('.rmin').value, b=r.querySelector('.rmax').value;
+  if(a===''&&b==='')return true; const v=e.dataset[r.dataset.k]===''?NaN:+e.dataset[r.dataset.k];
+  return !isNaN(v)&&(a===''||v>=+a)&&(b===''||v<=+b)})}
 function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]))&&inRange(e);
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
@@ -446,8 +466,8 @@ function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||
 document.getElementById('ostats').innerHTML=stats(secs);
 document.querySelectorAll('header .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
   if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
-if(cmin){cmin.oninput=apply; cmax.oninput=apply}
-document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); if(cmin){cmin.value='';cmax.value=''}
+rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.oninput=apply));
+document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.value=''));
   document.querySelectorAll('header .grp button').forEach(b=>b.classList.remove('on'));apply()};
 apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
@@ -477,16 +497,42 @@ function hh(){document.documentElement.style.setProperty('--hh',document.querySe
 hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
+// The order of the sidebar and the trades on the page: newest first, or oldest first like the workbook; the choice is
+// remembered in this browser. The page keeps the selected trade in view.
+const nav=document.querySelector('nav'), orderBtn=document.getElementById('order');
+function setOrder(oldest){const a=[...nav.querySelectorAll('a')].sort((x,y)=>links.indexOf(x)-links.indexOf(y));
+  (oldest?a.reverse():a).forEach(x=>nav.appendChild(x));
+  const m=document.querySelector('main'), ss=[...secs]; (oldest?ss.reverse():ss).forEach(x=>m.appendChild(x));
+  const cur=document.querySelector('nav a.active'); if(cur){holdMark=Date.now()+400; document.getElementById(cur.hash.slice(1)).scrollIntoView({behavior:'instant',block:'start'})}
+  orderBtn.textContent=oldest?'Oldest first (as in Excel) ⇅':'Newest first ⇅';
+  orderBtn.dataset.oldest=oldest?'1':''; try{localStorage.setItem('tvrr-order',oldest?'oldest':'newest')}catch(e){}}
+orderBtn.onclick=()=>setOrder(!orderBtn.dataset.oldest);
+try{if(localStorage.getItem('tvrr-order')==='oldest')setOrder(true)}catch(e){}
+// After a trade is picked in the sidebar, ↑ / ↓ select the trade above / below it in the list (only those the filters
+// show) and jump the page to it, instead of scrolling. A click in the page hands the arrow keys back to scrolling.
+let navKeys=false;
+nav.addEventListener('click',e=>{const a=e.target.closest('a'); if(!a)return; navKeys=true; e.preventDefault();  // jump even when it is the trade already in the address bar
+  const id=a.hash.slice(1); holdMark=Date.now()+400; history.replaceState(null,'','#'+id);
+  document.getElementById(id).scrollIntoView({behavior:'instant',block:'start'}); mark(id)});
+document.querySelector('main').addEventListener('mousedown',()=>navKeys=false);
+document.addEventListener('keydown',e=>{
+  if(!navKeys||lb.classList.contains('open')||(e.key!=='ArrowDown'&&e.key!=='ArrowUp')||e.target.closest?.('input,textarea,select'))return;
+  const vis=[...nav.querySelectorAll('a')].filter(a=>a.style.display!=='none');
+  const at=vis.findIndex(a=>a.classList.contains('active')), to=vis[at<0?0:at+(e.key==='ArrowDown'?1:-1)];
+  e.preventDefault(); if(!to)return;
+  const id=to.hash.slice(1), sec=document.getElementById(id);
+  holdMark=Date.now()+400; history.replaceState(null,'','#'+id); sec.scrollIntoView({behavior:'instant',block:'start'}); mark(id)});
 """
     path.write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{h.escape(label)} — trade gallery</title><style>{css}</style></head><body>
-<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3>{side}</nav>
+<nav><h3><span id="shown">{len(made)}</span> of {len(made)} trades</h3><button id="order" title="Reverse the list">Newest first ⇅</button>{side}</nav>
 <main><header class="top"><h1>{h.escape(label)} — trade gallery</h1><p class="sub">{len(made)} trades · {first.day} {first:%b %Y} → {last.day} {last:%b %Y} · times {h.escape(config.tz_name())} · from {h.escape(wbp.name)}</p>
 <div class="bar"><div class="blk"><div class="bt">All trades</div><div class="stats" id="ostats"></div></div>
 <div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
 {group("Outcome", "res", [(c, w, n) for c, w, n in ((c, w, sum(res_of(t)[0] == c for t, _ in made)) for c, _, w, _ in OUTCOMES.values()) if n or c != "be"])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
-{clear_range(made, clear)}
+{"".join(group(title, k, [(v, v, n) for v in order if (n := sum(str(f(t)) == v for t, _ in made))]) for title, k, f, order in groups)}
+{"".join(range_box(*r) for r in ranges)}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to enlarge it, use ← → to step through the charts shown, and close it with the red cross, a click outside it, a double-click or Escape.</p>
@@ -527,7 +573,7 @@ def write_note(note, label, wbp, made, style):
     links = tv_links(wbp)
     cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
     for t, (p1, p2) in newest_first(made):
-        d = t["Entry time"]; res = res_of(t)[1]
+        d = shown_time(t); res = res_of(t)[1]
         L += [f"### {d:%a} {d.day} {d:%b} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}", "",
               f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
               + (f" · MAE {t['MAE pts']:.1f}" if t.get("MAE pts") is not None else "") + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""), "",
