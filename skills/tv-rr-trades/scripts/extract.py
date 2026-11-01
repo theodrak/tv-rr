@@ -392,9 +392,12 @@ def legacy_name(h):
 
 def columns(with_journal, path=None):
     """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py),
-    then the workbook's own columns from the config (config.extras_for)."""
+    and the workbook's own columns from the config (config.extras_for) after its "after" column, else at the end."""
     base = list(COLS) + (journal.COLS if with_journal else [])
-    return base + ([c for c in config.extras_for(path)["columns"] if c not in base] if path else [])
+    if not path: return base
+    x = config.extras_for(path); own = [c for c in x["columns"] if c not in base]
+    at = base.index(x["after"]) + 1 if x["after"] in base else len(base)
+    return base[:at] + own + base[at:]
 
 
 def save(path, rows):
