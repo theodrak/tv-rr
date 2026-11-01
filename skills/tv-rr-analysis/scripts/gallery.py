@@ -259,8 +259,13 @@ def facts(t, links):
     return top, [(n, txt(n)) for n in NOTES]
 
 
+def shown_time(t):
+    """The time a trade is named by: its fill, as on its charts, else the drawing's entry time."""
+    return t.get("Fill time") or t["Entry time"]
+
+
 def heading(t):
-    d = t["Entry time"]; res = res_of(t)[1]
+    d = shown_time(t); res = res_of(t)[1]
     return f"{d:%a} {d.day} {d:%b %Y} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}"
 
 
@@ -332,7 +337,7 @@ def write_html(path, label, wbp, made, groups=(), extra_facts=()):
                        f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups))
     side = "".join(
         f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
-        f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
+        f'<b>{shown_time(t):%a} {shown_time(t).day} {shown_time(t):%b %H:%M}</b>'
         f'<span>{res_of(t)[2]} · {h.escape(t["Direction"])}'
         + (f' · {h.escape(t["Symbol"].split(":")[-1])}' if syms else "") + '</span></a>' for t, _ in newest_first(made))
     def values(f):
@@ -560,7 +565,7 @@ def write_note(note, label, wbp, made, style):
     links = tv_links(wbp)
     cell = lambda x: str(x).replace("|", "\\|").replace("\n", " ")
     for t, (p1, p2) in newest_first(made):
-        d = t["Entry time"]; res = res_of(t)[1]
+        d = shown_time(t); res = res_of(t)[1]
         L += [f"### {d:%a} {d.day} {d:%b} {d:%H:%M} · {t['Symbol']} · {t['Direction']} · {res}", "",
               f"Entry {t['Entry']:,} · stop {t['Stop']:,} · TP {t['TP planned']:,} · {t['Result R']:+.1f}R"
               + (f" · MAE {t['MAE pts']:.1f}" if t.get("MAE pts") is not None else "") + (f" · MFE {t['MFE pts']:.1f}" if t.get("MFE pts") is not None else ""), "",
