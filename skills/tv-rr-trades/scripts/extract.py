@@ -390,9 +390,11 @@ def legacy_name(h):
     return m.group(1) if m and m.group(1) in TIME_COLS else h
 
 
-def columns(with_journal):
-    """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py)."""
-    return list(COLS) + (journal.COLS if with_journal else [])
+def columns(with_journal, path=None):
+    """COLS, with the journal columns after them (after "Last copied") when the workbook has a Lists sheet (journal.py),
+    then the workbook's own columns from the config (config.extras_for)."""
+    base = list(COLS) + (journal.COLS if with_journal else [])
+    return base + ([c for c in config.extras_for(path)["columns"] if c not in base] if path else [])
 
 
 def save(path, rows):
@@ -400,7 +402,7 @@ def save(path, rows):
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
     lists = journal.read_lists(path) if journal.enabled(path) else None
-    COLS = columns(lists is not None)
+    COLS = columns(lists is not None, path)
     wb = Workbook(); ws = wb.active; ws.title = "Trades"
     ws.append(COLS)
     for c in ws[1]: c.font = Font(bold=True); c.alignment = Alignment(horizontal="center", wrap_text=True)
@@ -437,6 +439,11 @@ def save(path, rows):
     for i, c in enumerate(COLS, 1): ws.column_dimensions[get_column_letter(i)].width = widths.get(c, 12)
     if lists is not None:
         journal.style(ws, COLS, len(rows)); journal.write_lists(wb, lists)
+    for c, choices in config.extras_for(path)["dropdowns"].items():
+        if c not in COLS: continue
+        L = get_column_letter(COLS.index(c) + 1)
+        x = DataValidation(type="list", formula1='"' + ",".join(map(str, choices)) + '"', allow_blank=True, showErrorMessage=False)
+        ws.add_data_validation(x); x.add(f"{L}2:{L}{max(len(rows) + 1, 2)}"); ws.column_dimensions[L].width = 9
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 
@@ -505,7 +512,8 @@ if __name__ == "__main__":
             if ch := changes(prev, r): moved.append((r, ch))
             same = all(prev.get(c) == r.get(c) for c in ("Entry", "Stop", "TP planned"))
             for c in USER_COLS: r[c] = prev.get(c) if same else None
-            for c in journal.KEEP + list(KEEP_COLS): r[c] = prev.get(c)  # your notes and links stay even when the levels move
+            for c in journal.KEEP + list(KEEP_COLS) + config.extras_for(path)["columns"]:
+                r[c] = prev.get(c)  # your notes and links stay even when the levels move
             if not same and prev.get("Confirmed outcome"): r["Note"] = "levels changed since you confirmed it — confirm again"
         if a.decision: r["Decision"] = a.decision
         old[key(r)] = r

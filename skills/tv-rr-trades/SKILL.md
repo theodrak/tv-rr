@@ -130,6 +130,11 @@ Every rebuild keeps both sheets and all journal values, including when the drawi
 journal made before the Auto confluence sheet existed gets one that keeps its old behaviour: VWAP and the 50/100/200 SMA
 within 10 pts.
 
+**A strategy's own columns** go in the config, not in these scripts: `workbooks` › a fragment of the workbook's file
+name (e.g. `"9 Ema Retest"`, covering its back, forward and replay logs) › `columns` (the user's own, kept on every
+rebuild like the journal's), `dropdowns` (`{column: [choices]}`) and `plugins` (Python files with `COLUMNS` and
+`compute(row, t0) → {column: value}`, filled in by tv-rr-analysis after every save). The strategy's skill owns the plugin.
+
 ## Price data
 
 Outcomes are checked on stored bars: 1-minute wherever they cover a trade, otherwise the finest bars held.

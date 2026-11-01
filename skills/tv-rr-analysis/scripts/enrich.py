@@ -141,6 +141,17 @@ def vwap_direction(recent, sign):
     return word, "With" if now * sign > 0 else "Against"
 
 
+def plugins(path):
+    """The workbook's plugins (config workbooks › plugins): modules with COLUMNS and compute(row, t0) → {column: value},
+    for columns that belong to one strategy rather than to every trade log."""
+    import importlib.util
+    out = []
+    for p in config.extras_for(path)["plugins"]:
+        p = Path(p).expanduser(); spec = importlib.util.spec_from_file_location(f"tvrr_plugin_{p.stem}", p)
+        m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m); out.append(m)
+    return out
+
+
 def enrich(path):
     from openpyxl import load_workbook
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -149,7 +160,8 @@ def enrich(path):
     for c in ws[1]: c.value = RENAMED.get(legacy_name(c.value), legacy_name(c.value))
     for i in sorted((n for n, c in enumerate(ws[1], 1) if c.value in OBSOLETE), reverse=True): ws.delete_cols(i)
     head = [c.value for c in ws[1]]
-    for c in NEW_COLS:
+    plug = plugins(path); plug_cols = [c for m in plug for c in m.COLUMNS]
+    for c in NEW_COLS + plug_cols:
         if c not in head:
             ws.cell(1, len(head) + 1, c).font = Font(bold=True); ws.cell(1, len(head) + 1).alignment = Alignment(horizontal="center")
             head.append(c)
@@ -216,6 +228,10 @@ def enrich(path):
             if c == "VWAP in the way": cell.fill = {"Yes": bad}.get(out[c], PatternFill())
             if c == "VWAP behind": cell.fill = {"Yes": good}.get(out[c], PatternFill())
             if c == "VWAP dist" and out[c] is not None and out[c] < 0: cell.fill = bad
+        for m in plug:
+            got = m.compute(v, t0) if t0 and v.get("Symbol") else {}
+            for c in m.COLUMNS:
+                ws.cell(i, col[c], got.get(c)).alignment = Alignment(horizontal="center"); out[c] = got.get(c)
         if "Auto confluence" in col and v.get("Symbol") not in auto_cache: auto_cache[v.get("Symbol")] = journal.auto_settings(wb, v.get("Symbol"))
         auto = auto_cache.get(v.get("Symbol")) if "Auto confluence" in col else None
         if auto and t0 and v.get("Symbol"):
@@ -239,7 +255,7 @@ def enrich(path):
             for c, x in zip(journal.CONFS, slots): ws.cell(i, col[c], x); v[c] = x
             v["Auto confluence"] = text
         records.append((v, out))
-    for c in NEW_COLS: ws.column_dimensions[get_column_letter(col[c])].width = 10
+    for c in NEW_COLS + plug_cols: ws.column_dimensions[get_column_letter(col[c])].width = 10
     ws.auto_filter.ref = ws.dimensions  # extract.py set it before these columns existed
     breakdown(wb, records)
     wb.save(path)
