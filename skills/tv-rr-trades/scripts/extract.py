@@ -359,8 +359,8 @@ def changes(prev, r):
     for c in ("Entry time", "Entry", "Stop", "TP planned"):
         a, b = prev.get(c), r.get(c)
         if isinstance(a, dt.datetime) and isinstance(b, dt.datetime):
-            if a != b: out.append(f"{c} {a:%d %b %H:%M} → {b:%d %b %H:%M}")
-        elif a is not None and b is not None and abs(float(a) - float(b)) > 1e-9: out.append(f"{c} {a:,} → {b:,}")
+            if a != b: out.append(f"{HEADERS.get(c, c)} {a:%d %b %H:%M} → {b:%d %b %H:%M}")
+        elif a is not None and b is not None and abs(float(a) - float(b)) > 1e-9: out.append(f"{HEADERS.get(c, c)} {a:,} → {b:,}")
     return out
 
 

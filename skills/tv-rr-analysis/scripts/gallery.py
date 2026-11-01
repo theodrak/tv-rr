@@ -418,6 +418,9 @@ header.top h1{font-size:24px} header.top .sub{margin:0 0 8px;font-size:13px}
 h1{margin:0 0 4px} .sub{color:#666} table{border-collapse:collapse;margin:16px 0} td,th{border:1px solid #ddd;padding:4px 12px;text-align:center}
 section{border-top:1px solid #eee;padding:16px 0;scroll-margin-top:calc(var(--hh, 150px) + 8px)} h2{font-size:17px;margin:0} .tp{color:#2e7d32} .sl{color:#c62828} .be{color:#616161}
 img{width:100%;height:auto;margin:6px 0;border:1px solid #eee}
+main section img{box-sizing:border-box;border-radius:6px;border-left:6px solid transparent}  /* win / loss bar, as in the viewer */
+main section[data-res=tp] img{border-left-color:#43a047} main section[data-res=sl] img{border-left-color:#e53935}
+main section[data-res=be] img{border-left-color:#9e9e9e}
 body.img-ent a.fol, body.img-fol a.ent{display:none}
 main section a.ent, main section a.fol{cursor:zoom-in}
 #lb{display:none;position:fixed;inset:0;z-index:100;background:rgba(30,30,30,.85);align-items:center;justify-content:center;cursor:zoom-out}

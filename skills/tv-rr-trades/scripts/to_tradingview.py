@@ -98,7 +98,9 @@ def main():
     if not rows: sys.exit("No trades match.")
     label = a.label if a.label is not None else default_label(path)
     base = json.loads(TEMPLATE.read_text())
-    sources = [drawing(r, base, label, a.min_minutes) for r in rows]
+    # newest first: TradingView's object tree lists the last drawing pasted at the top, so this puts the oldest trade
+    # there, as in the workbook
+    sources = [drawing(r, base, label, a.min_minutes) for r in reversed(rows)]
     for s in sources: print(s["source"]["state"]["title"])
     title = "Drawings" if len(sources) > 1 else f'{str(rows[0]["Direction"]).lower()} position'
     payload = html.escape(json.dumps({"sources": sources, "title": title}, separators=(",", ":")), quote=True)
