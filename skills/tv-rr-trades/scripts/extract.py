@@ -454,6 +454,8 @@ def save(path, rows):
         L = get_column_letter(COLS.index(c) + 1)
         x = DataValidation(type="list", formula1='"' + ",".join(map(str, choices)) + '"', allow_blank=True, showErrorMessage=False)
         ws.add_data_validation(x); x.add(f"{L}2:{L}{max(len(rows) + 1, 2)}"); ws.column_dimensions[L].width = 9
+        if all(isinstance(v, int) for v in choices):  # a number typed into an unformatted cell can come out as a date
+            for i in range(2, len(rows) + 2): ws[f"{L}{i}"].number_format = "0"
     ws.auto_filter.ref = ws.dimensions
     path.parent.mkdir(parents=True, exist_ok=True); wb.save(path)
 
