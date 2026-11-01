@@ -484,17 +484,23 @@ function hh(){document.documentElement.style.setProperty('--hh',document.querySe
 hh(); window.addEventListener('resize',hh);
 function go(){const id=location.hash.slice(1),e=id&&document.getElementById(id);if(e){e.scrollIntoView({behavior:'instant',block:'start'});mark(id)}}
 window.addEventListener('load',go); window.addEventListener('hashchange',()=>mark(location.hash.slice(1)));
-// The sidebar's order: newest first, or oldest first like the workbook; the choice is remembered in this browser.
+// The order of the sidebar and the trades on the page: newest first, or oldest first like the workbook; the choice is
+// remembered in this browser. The page keeps the selected trade in view.
 const nav=document.querySelector('nav'), orderBtn=document.getElementById('order');
 function setOrder(oldest){const a=[...nav.querySelectorAll('a')].sort((x,y)=>links.indexOf(x)-links.indexOf(y));
-  (oldest?a.reverse():a).forEach(x=>nav.appendChild(x)); orderBtn.textContent=oldest?'Oldest first (as in Excel) ⇅':'Newest first ⇅';
+  (oldest?a.reverse():a).forEach(x=>nav.appendChild(x));
+  const m=document.querySelector('main'), ss=[...secs]; (oldest?ss.reverse():ss).forEach(x=>m.appendChild(x));
+  const cur=document.querySelector('nav a.active'); if(cur){holdMark=Date.now()+400; document.getElementById(cur.hash.slice(1)).scrollIntoView({behavior:'instant',block:'start'})}
+  orderBtn.textContent=oldest?'Oldest first (as in Excel) ⇅':'Newest first ⇅';
   orderBtn.dataset.oldest=oldest?'1':''; try{localStorage.setItem('tvrr-order',oldest?'oldest':'newest')}catch(e){}}
 orderBtn.onclick=()=>setOrder(!orderBtn.dataset.oldest);
 try{if(localStorage.getItem('tvrr-order')==='oldest')setOrder(true)}catch(e){}
 // After a trade is picked in the sidebar, ↑ / ↓ select the trade above / below it in the list (only those the filters
 // show) and jump the page to it, instead of scrolling. A click in the page hands the arrow keys back to scrolling.
 let navKeys=false;
-nav.addEventListener('click',e=>{if(e.target.closest('a'))navKeys=true});
+nav.addEventListener('click',e=>{const a=e.target.closest('a'); if(!a)return; navKeys=true; e.preventDefault();  // jump even when it is the trade already in the address bar
+  const id=a.hash.slice(1); holdMark=Date.now()+400; history.replaceState(null,'','#'+id);
+  document.getElementById(id).scrollIntoView({behavior:'instant',block:'start'}); mark(id)});
 document.querySelector('main').addEventListener('mousedown',()=>navKeys=false);
 document.addEventListener('keydown',e=>{
   if(!navKeys||lb.classList.contains('open')||(e.key!=='ArrowDown'&&e.key!=='ArrowUp')||e.target.closest?.('input,textarea,select'))return;
