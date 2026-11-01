@@ -329,12 +329,14 @@ TITLE_TRADE = re.compile(r"(\d{1,2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}) (Long|Short
 def relink(new, titles, old):
     """Pasting drawings into TradingView gives them new ids, so a trade put back on the chart by to_tradingview.py and
     copied out again would look new. Find its row from the drawing's name instead: the "· id X" it was given, else the
-    entry date, time and direction in it (names written before the id was added). The row takes the drawing's new id,
+    date, time (the fill, or the entry for older names) and direction in it, for names without an id. The row takes the drawing's new id,
     so later copies of the same drawing match directly. Returns the drawings relinked."""
     on_clip = {key(r) for r in new}; done = []
     by_time = {}
     for k, r in old.items():
-        if isinstance(r.get("Entry time"), dt.datetime): by_time.setdefault((k[0], r["Direction"], r["Entry time"]), []).append(k)
+        for c in ("Fill time", "Entry time"):
+            if isinstance(r.get(c), dt.datetime) and k not in by_time.get((k[0], r["Direction"], r[c]), []):
+                by_time.setdefault((k[0], r["Direction"], r[c]), []).append(k)
     for r, title in zip(new, titles):
         if key(r) in old or not title: continue
         sym = str(r["Symbol"]); hit = None

@@ -80,7 +80,7 @@ TradingView chart with ⌘V. Use when the user asks to put trades back on a char
 - **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
   workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
 - **TradingView gives pasted drawings new ids**, so each drawing's name ends "· id <the row's id>". When it is copied
-  back out and logged, `extract.py` finds the row from that id (or, for names without one, from the entry date, time and
+  back out and logged, `extract.py` finds the row from that id (or, for names without one, from the date and time — fill or entry — and
   direction in the name), updates it instead of adding a duplicate, moves the row to the new id, and lists under
   "amended since logged" any entry time, entry, stop or TP that changed.
 - Entry, stop and TP come from the row (needs the symbol's tick in the config); a closed trade gets its close point at
