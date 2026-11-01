@@ -313,8 +313,9 @@ def anchor(t):
     return "t-" + re.sub(r"[^A-Za-z0-9_-]", "_", f"{t['Symbol']}-{key}")
 
 
-def write_html(path, label, wbp, made):
+def write_html(path, label, wbp, made, groups=()):
     """One self-contained page for any browser; images are linked relative to the page, clicking one opens it full size.
+    groups adds a strategy's own filter rows: (title, key, value_of(trade), order of the values), key in lowercase letters.
     Each trade's section has an id (anchor()), and a one-line page per trade jumps to it (enrich.jump_dir: Office's
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     import html as h, os
@@ -327,7 +328,7 @@ def write_html(path, label, wbp, made):
     clear = lambda t: "" if t.get("Bars clear of EMA 9") in (None, "") else int(t["Bars clear of EMA 9"])
     attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" data-nclear="{clear(t)}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
-                       f'data-dir="{h.escape(t["Direction"])}"')
+                       f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups))
     side = "".join(
         f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
         f'<b>{t["Entry time"]:%a} {t["Entry time"].day} {t["Entry time"]:%b %H:%M}</b>'
@@ -426,7 +427,7 @@ function mark(id){links.forEach(a=>a.classList.toggle('active',a.hash==='#'+id))
 const obs=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
   if(v)mark(v.target.id)},{rootMargin:'0px 0px -70% 0px'});
 document.querySelectorAll('main section').forEach(s=>obs.observe(s));
-const sel={res:new Set(),dec:new Set(),grade:new Set()}, secs=[...document.querySelectorAll('main section')];
+const sel={res:new Set(),dec:new Set(),grade:new Set()""" + "".join(f",{k}:new Set()" for _, k, _, _ in groups) + """}, secs=[...document.querySelectorAll('main section')];
 const hasBE=secs.some(s=>s.dataset.res==='be');
 function row(name,list){const n=list.length,w=list.filter(s=>s.dataset.res==='tp').length,l=list.filter(s=>s.dataset.res==='sl').length,num=k=>list.map(s=>parseFloat(s.dataset[k])).filter(x=>!isNaN(x)),
   avg=a=>a.length?(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1):'–',r=num('r').reduce((x,y)=>x+y,0);
@@ -486,6 +487,7 @@ window.addEventListener('load',go); window.addEventListener('hashchange',()=>mar
 <div class="blk filters"><div class="bt">Filters <button id="clear">Clear</button></div><div class="grps">
 {group("Outcome", "res", [(c, w, n) for c, w, n in ((c, w, sum(res_of(t)[0] == c for t, _ in made)) for c, _, w, _ in OUTCOMES.values()) if n or c != "be"])}
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
+{"".join(group(title, k, [(v, v, n) for v in order if (n := sum(str(f(t)) == v for t, _ in made))]) for title, k, f, order in groups)}
 {clear_range(made, clear)}
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
