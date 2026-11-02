@@ -85,7 +85,7 @@ TradingView chart with ⌘V. Use when the user asks to put trades back on a char
 - **Box width:** at least 40 minutes (`--min-minutes`), so a 5-minute trade is still easy to spot; the close point
   stays at the real exit.
 - **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
-- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
+- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R> <decision>` (the journal's Taken / Filtered / Missed, when the log has it); the label defaults to the
   workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
 - **TradingView gives pasted drawings new ids**, so each drawing's name ends "· id <the row's id>". When it is copied
   back out and logged, `extract.py` finds the row from that id (or, for names without one, from the date and time — fill or entry — and
