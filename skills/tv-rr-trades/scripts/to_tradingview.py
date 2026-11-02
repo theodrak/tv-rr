@@ -1,7 +1,8 @@
 """Put logged trades back on the clipboard as TradingView Long/Short Position drawings, ready to paste into a chart.
 
 usage: to_tradingview.py [--workbook PATH] [--id ID ...] [--date YYYY-MM-DD[..YYYY-MM-DD]] [--direction long|short]
-                         [--outcome TP|Stop|…] [--last N] [--min-minutes 40] [--label TEXT] [--out FILE.html] [--dry-run]
+                         [--outcome TP|Stop|…] [--last N] [--min-minutes 40] [--label TEXT]
+                         [--mark COLUMN ...] [--mark-gap 5] [--mark-height 12] [--out FILE.html] [--dry-run]
 
 At least one selector (--id, --date, --direction, --outcome, --last) is required. Filters combine. TradingView gives
 pasted drawings new ids, so each drawing carries the trade's id in its name; extract.py finds the row from it when the
@@ -10,6 +11,11 @@ named "<label> <fill date and time (else entry)> <direction> <outcome> <result R
 "Back/Forward/Replay Testing"). Entry, stop and TP are rebuilt from the row; a closed trade gets its close point at
 the exit TradingView drew (else the logged exit). Each box is at least --min-minutes wide (default 40) so
 short trades stay visible; the close point stays at the real exit. The style comes from position_template.json.
+
+--mark COLUMN adds a text drawing per trade with that column's value (the first of several columns that has one, e.g.
+--mark "Touch #" "Touch # (auto)"): below the stop for a long, above it for a short, on the bar before the entry
+candle. TradingView anchors text at its top, so a long's text sits --mark-gap pts under the stop and a short's
+--mark-gap + --mark-height pts over it. The style comes from text_template.json; trades with no value get no text.
 
 Writing the clipboard needs macOS (run with --with pyobjc-framework-Cocoa). Elsewhere use --out and open the file.
 """
@@ -20,6 +26,7 @@ import config
 from extract import legacy_name
 
 TEMPLATE = Path(__file__).with_name("position_template.json")
+TEXT_TEMPLATE = Path(__file__).with_name("text_template.json")
 BAR_SECONDS = {"1": 60, "3": 180, "5": 300, "15": 900, "30": 1800, "60": 3600, "240": 14400, "D": 86400}
 
 
@@ -69,6 +76,19 @@ def drawing(row, base, label, min_minutes=40):
     return d
 
 
+def mark(row, base, cols, gap, height):
+    """A text drawing with the first value in `cols`, outside the stop: under a long's, over a short's."""
+    v = next((row.get(c) for c in cols if row.get(c) not in (None, "")), None)
+    if v is None: return None
+    tf = str(row.get("Timeframe") or "5"); long_ = str(row["Direction"]).lower() == "long"
+    d = copy.deepcopy(base); src = d["source"]
+    src["id"] = "".join(random.choices(string.ascii_letters + string.digits, k=6)); d["modelId"] = str(uuid.uuid4())
+    src["state"].update(symbol=row["Symbol"], interval=tf, text=f"{v:g}" if isinstance(v, (int, float)) else str(v))
+    price = row["Stop"] - gap if long_ else row["Stop"] + gap + height
+    src["points"] = [{"time_t": epoch(row["Entry (UTC)"]) - BAR_SECONDS.get(tf, 300), "offset": 0, "price": price, "interval": tf}]
+    return d
+
+
 def to_clipboard(clip_html, text):
     from AppKit import NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString
     pb = NSPasteboard.generalPasteboard(); pb.clearContents()
@@ -82,6 +102,10 @@ def main():
     ap.add_argument("--direction", choices=["long", "short"]); ap.add_argument("--outcome")
     ap.add_argument("--last", type=int, help="the N most recent entries (after the other filters)")
     ap.add_argument("--min-minutes", type=int, default=40, help="minimum width of each box, so short trades stay visible")
+    ap.add_argument("--mark", nargs="+", default=[], metavar="COLUMN",
+                    help="add a text with this column's value (the first column that has one) outside each trade's stop")
+    ap.add_argument("--mark-gap", type=float, default=5, help="pts between the stop and the text")
+    ap.add_argument("--mark-height", type=float, default=12, help="the text's height in pts, to clear a short's stop")
     ap.add_argument("--label"); ap.add_argument("--out"); ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     if not (a.id or a.date or a.direction or a.outcome or a.last):
@@ -102,6 +126,11 @@ def main():
     # there, as in the workbook
     sources = [drawing(r, base, label, a.min_minutes) for r in reversed(rows)]
     for s in sources: print(s["source"]["state"]["title"])
+    if a.mark:
+        tb = json.loads(TEXT_TEMPLATE.read_text())
+        marks = [m for m in (mark(r, tb, a.mark, a.mark_gap, a.mark_height) for r in reversed(rows)) if m]
+        print(f"{len(marks)} of {len(rows)} trades marked with {' / '.join(a.mark)}")
+        sources += marks
     title = "Drawings" if len(sources) > 1 else f'{str(rows[0]["Direction"]).lower()} position'
     payload = html.escape(json.dumps({"sources": sources, "title": title}, separators=(",", ":")), quote=True)
     clip = f'<meta charset="utf-8"><span data-tradingview-clip="{payload}">{title}</span>'

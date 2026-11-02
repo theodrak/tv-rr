@@ -1,0 +1,51 @@
+{
+ "type": "drawing",
+ "geometry": [
+  {
+   "x": 0.6884686642070307,
+   "y": 0.34326280623607214
+  }
+ ],
+ "source": {
+  "type": "LineToolText",
+  "state": {
+   "color": "rgba(242, 54, 69, 1)",
+   "backgroundColor": "rgba(0, 0, 0, 1)",
+   "borderColor": "rgba(244, 67, 54, 1)",
+   "backgroundTransparency": 70,
+   "intervalsVisibilities": {
+    "ticks": false,
+    "seconds": false,
+    "minutesTo": 5,
+    "hours": false,
+    "days": false,
+    "weeks": false,
+    "months": false,
+    "ranges": false
+   },
+   "fontsize": 24,
+   "bold": true,
+   "italic": false,
+   "fillBackground": false,
+   "drawBorder": false,
+   "wordWrap": false,
+   "wordWrapWidth": 200,
+   "text": "",
+   "anchored": false,
+   "symbolStateVersion": 2,
+   "zOrderVersion": 2,
+   "frozen": false,
+   "title": "",
+   "interval": "5",
+   "symbol": "OANDA:DE30EUR",
+   "currencyId": null,
+   "unitId": null,
+   "metricId": "price",
+   "visible": true
+  },
+  "points": [],
+  "zorder": 19999,
+  "ownerSource": "36EYpr",
+  "sharingMode": 1
+ }
+}
