@@ -14,7 +14,8 @@ short trades stay visible; the close point stays at the real exit. The style com
 
 --mark COLUMN adds a text drawing per trade with that column's value (the first of several columns that has one, e.g.
 --mark "Touch #" "Touch # (auto)"): below the stop for a long, above it for a short, on the bar before the entry
-candle. TradingView anchors text at its top, so a long's text sits --mark-gap pts under the stop and a short's
+candle, named "<date> <first word of the first COLUMN> <value>" (e.g. "1 Jun 26 Touch 2") and placed next to its
+position, so the object tree lists each position with its text under it. TradingView anchors text at its top, so a long's text sits --mark-gap pts under the stop and a short's
 --mark-gap + --mark-height pts over it. The style comes from text_template.json; trades with no value get no text.
 
 Writing the clipboard needs macOS (run with --with pyobjc-framework-Cocoa). Elsewhere use --out and open the file.
@@ -83,7 +84,9 @@ def mark(row, base, cols, gap, height):
     tf = str(row.get("Timeframe") or "5"); long_ = str(row["Direction"]).lower() == "long"
     d = copy.deepcopy(base); src = d["source"]
     src["id"] = "".join(random.choices(string.ascii_letters + string.digits, k=6)); d["modelId"] = str(uuid.uuid4())
-    src["state"].update(symbol=row["Symbol"], interval=tf, text=f"{v:g}" if isinstance(v, (int, float)) else str(v))
+    text = f"{v:g}" if isinstance(v, (int, float)) else str(v)
+    src["state"].update(symbol=row["Symbol"], interval=tf, text=text,
+                        title=f'{row.get("Fill time") or row["Entry time"]:%-d %b %y} {cols[0].split()[0]} {text}')
     price = row["Stop"] - gap if long_ else row["Stop"] + gap + height
     src["points"] = [{"time_t": epoch(row["Entry (UTC)"]) - BAR_SECONDS.get(tf, 300), "offset": 0, "price": price, "interval": tf}]
     return d
@@ -124,13 +127,14 @@ def main():
     base = json.loads(TEMPLATE.read_text())
     # newest first: TradingView's object tree lists the last drawing pasted at the top, so this puts the oldest trade
     # there, as in the workbook
-    sources = [drawing(r, base, label, a.min_minutes) for r in reversed(rows)]
+    # each trade's text goes just before its position, so the tree shows every position with its text under it
+    tb = json.loads(TEXT_TEMPLATE.read_text()) if a.mark else None; sources = []; marked = 0
+    for r in reversed(rows):
+        m = mark(r, tb, a.mark, a.mark_gap, a.mark_height) if a.mark else None
+        if m: sources.append(m); marked += 1
+        sources.append(drawing(r, base, label, a.min_minutes))
     for s in sources: print(s["source"]["state"]["title"])
-    if a.mark:
-        tb = json.loads(TEXT_TEMPLATE.read_text())
-        marks = [m for m in (mark(r, tb, a.mark, a.mark_gap, a.mark_height) for r in reversed(rows)) if m]
-        print(f"{len(marks)} of {len(rows)} trades marked with {' / '.join(a.mark)}")
-        sources += marks
+    if a.mark: print(f"{marked} of {len(rows)} trades marked with {' / '.join(a.mark)}")
     title = "Drawings" if len(sources) > 1 else f'{str(rows[0]["Direction"]).lower()} position'
     payload = html.escape(json.dumps({"sources": sources, "title": title}, separators=(",", ":")), quote=True)
     clip = f'<meta charset="utf-8"><span data-tradingview-clip="{payload}">{title}</span>'
