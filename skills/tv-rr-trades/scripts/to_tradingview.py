@@ -127,12 +127,16 @@ def main():
     base = json.loads(TEMPLATE.read_text())
     # newest first: TradingView's object tree lists the last drawing pasted at the top, so this puts the oldest trade
     # there, as in the workbook
-    # each trade's text goes just before its position, so the tree shows every position with its text under it
+    # each trade's text goes just before its position
     tb = json.loads(TEXT_TEMPLATE.read_text()) if a.mark else None; sources = []; marked = 0
     for r in reversed(rows):
         m = mark(r, tb, a.mark, a.mark_gap, a.mark_height) if a.mark else None
         if m: sources.append(m); marked += 1
         sources.append(drawing(r, base, label, a.min_minutes))
+    # the object tree sorts by z-order (highest at the top), not by paste order: number them so the tree reads oldest
+    # trade first, each position with its text under it
+    top = base["source"].get("zorder", 0) + len(sources)
+    for k, s in enumerate(reversed(sources)): s["source"]["zorder"] = top - k
     for s in sources: print(s["source"]["state"]["title"])
     if a.mark: print(f"{marked} of {len(rows)} trades marked with {' / '.join(a.mark)}")
     title = "Drawings" if len(sources) > 1 else f'{str(rows[0]["Direction"]).lower()} position'
