@@ -335,6 +335,9 @@ def write_html(path, label, wbp, made, groups=(), extra_facts=(), ranges=()):
     container on a Mac, <page>_files/trades/ elsewhere), because Excel strips the #anchor from links to local files."""
     if any(t.get("VWAP side") for t, _ in made):
         groups = [("VWAP side", "vside", lambda t: t.get("VWAP side") or "–", ["With", "Against", "–"])] + list(groups)
+    # the date filters: a button per month (by the time shown in the sidebar), and From / To dates
+    months = sorted({shown_time(t).replace(day=1, hour=0, minute=0, second=0, microsecond=0) for t, _ in made})
+    groups = [("Month", "month", lambda t: f"{shown_time(t):%b %y}", [f"{m:%b %y}" for m in months])] + list(groups)
     import html as h, os
     first, last = made[0][0]["Entry time"], made[-1][0]["Entry time"]
     rel = lambda p: os.path.relpath(p, path.parent).replace(os.sep, "/")
@@ -344,7 +347,7 @@ def write_html(path, label, wbp, made, groups=(), extra_facts=(), ranges=()):
     num = lambda v: "" if v is None else f"{v}"
     attrs = lambda t: (f'data-res="{res_of(t)[0]}" data-dec="{h.escape(dec(t))}" data-grade="{h.escape(grade(t))}" '
                        f'data-r="{num(t.get("Result R"))}" data-mae="{num(t.get("MAE pts"))}" data-mfe="{num(t.get("MFE pts"))}" '
-                       f'data-dir="{h.escape(t["Direction"])}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups)
+                       f'data-dir="{h.escape(t["Direction"])}" data-day="{shown_time(t):%Y-%m-%d}"' + "".join(f' data-{k}="{h.escape(str(f(t)))}"' for _, k, f, _ in groups)
                        + "".join(f' data-{k}="{"" if f(t) is None else f(t)}"' for _, k, f in ranges))
     side = "".join(
         f'<a href="#{anchor(t)}" class="{res_of(t)[0]}" {attrs(t)}>'
@@ -400,7 +403,7 @@ nav h3{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:#777;m
 .grp{} .gt{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em;margin:0 2px 3px}
 .btns{display:flex;flex-wrap:wrap;gap:4px} .btns button{font:12px inherit;padding:3px 8px;border:1px solid #ddd;background:#fff;border-radius:4px;cursor:pointer}
 .rng{align-items:center;font-size:12px;color:#555} .rng input{width:52px;font:12px inherit;padding:2px 4px;border:1px solid #ddd;border-radius:4px}
-.rng i{font-style:normal;color:#999;font-size:11px}
+.rng i{font-style:normal;color:#999;font-size:11px} .drng input{width:auto}
 .btns button i{font-style:normal;color:#999;font-size:11px} .btns button.on{background:#222;color:#fff;border-color:#222} .btns button.on i{color:#ccc}
 nav a{display:block;padding:5px 8px;margin:1px 0;border-radius:5px;text-decoration:none;border-left:3px solid transparent;font-size:13px}
 nav a b{display:block;font-weight:600;color:#222} nav a span{font-size:12px}
@@ -465,15 +468,18 @@ const rngs=[...document.querySelectorAll('.rng[data-k]')];
 function inRange(e){return rngs.every(r=>{const a=r.querySelector('.rmin').value, b=r.querySelector('.rmax').value;
   if(a===''&&b==='')return true; const v=e.dataset[r.dataset.k]===''?NaN:+e.dataset[r.dataset.k];
   return !isNaN(v)&&(a===''||v>=+a)&&(b===''||v<=+b)})}
-function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]))&&inRange(e);
+// From / To dates (either may be blank), by the trade's date as shown in the sidebar
+const dfrom=document.getElementById('dfrom'), dto=document.getElementById('dto');
+const inDates=e=>(!dfrom.value||e.dataset.day>=dfrom.value)&&(!dto.value||e.dataset.day<=dto.value);
+function apply(){const ok=e=>Object.entries(sel).every(([g,set])=>set.size===0||set.has(e.dataset[g]))&&inRange(e)&&inDates(e);
   links.forEach(a=>a.style.display=ok(a)?'':'none');
   const shown=secs.filter(s=>{const v=ok(s);s.style.display=v?'':'none';return v});
   document.getElementById('shown').textContent=shown.length;document.getElementById('fstats').innerHTML=stats(shown)}
 document.getElementById('ostats').innerHTML=stats(secs);
 document.querySelectorAll('header .grp button').forEach(b=>b.onclick=()=>{const s=sel[b.dataset.g],v=b.dataset.v;
   if(s.has(v))s.delete(v);else s.add(v);b.classList.toggle('on',s.has(v));apply()});
-rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.oninput=apply));
-document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.value=''));
+rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.oninput=apply)); dfrom.oninput=dto.oninput=apply;
+document.getElementById('clear').onclick=()=>{Object.values(sel).forEach(s=>s.clear()); rngs.forEach(r=>r.querySelectorAll('input').forEach(i=>i.value='')); dfrom.value=dto.value='';
   document.querySelectorAll('header .grp button').forEach(b=>b.classList.remove('on'));apply()};
 apply();
 document.querySelectorAll('header button[data-img]').forEach(b=>b.onclick=()=>{   // one choice at a time
@@ -539,6 +545,7 @@ document.addEventListener('keydown',e=>{
 {group("Decision", "dec", values(dec))}{group("Grade", "grade", values(grade))}
 {"".join(group(title, k, [(v, v, n) for v in order if (n := sum(str(f(t)) == v for t, _ in made))]) for title, k, f, order in groups)}
 {"".join(range_box(*r) for r in ranges)}
+<div class="grp"><div class="gt">Dates</div><div class="btns rng drng">from <input id="dfrom" type="date" min="{first:%Y-%m-%d}" max="{last:%Y-%m-%d}"> to <input id="dto" type="date" min="{first:%Y-%m-%d}" max="{last:%Y-%m-%d}"></div></div>
 <div class="grp"><div class="gt">Images</div><div class="btns"><button data-img="ent">Entry only</button><button data-img="fol">Exit only</button><button data-img="both" class="on">Both</button></div></div></div></div>
 <div class="blk"><div class="bt">Filtered</div><div class="stats" id="fstats"></div></div></div></header>
 <p>Each trade has two charts: at entry (only what was visible at the fill) and the follow-through. Pick a trade on the left; click a chart to enlarge it, use ← → to step through the charts shown, and close it with the red cross, a click outside it, a double-click or Escape.</p>
