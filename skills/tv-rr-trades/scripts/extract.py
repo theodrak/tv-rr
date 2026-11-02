@@ -86,9 +86,10 @@ def drawings(text, marks=None):
     return out, skipped
 
 
-def apply_marks(marks, rows, headers):
+def apply_marks(marks, rows, headers, before=None):
     """Write each mark's text into its trade's column: the trade whose fill (or entry) time and symbol are in the
-    mark's name, the column the first header starting with the name's word ("Touch" → "Touch #"). A mark that only
+    mark's name (or had before this copy moved it: `before`, id → times), the column the first header starting with
+    the name's word ("Touch" → "Touch #"). A mark that only
     repeats the value it was drawn with (the column's own, or the computed fallback when the column was empty) changes
     nothing. Returns (changed, unmatched) for the report."""
     changed, unmatched = [], []
@@ -97,7 +98,8 @@ def apply_marks(marks, rows, headers):
         col = next((h for h in headers if h.split()[0] == m.group(2)), None)
         try: t = dt.datetime.strptime(m.group(1), "%d %b %y %H:%M")
         except ValueError: t = None
-        hits = [r for r in rows if str(r.get("Symbol")) == st.get("symbol") and t in (r.get("Fill time"), r.get("Entry time"))]
+        hits = [r for r in rows if str(r.get("Symbol")) == st.get("symbol")
+                and t in (r.get("Fill time"), r.get("Entry time"), *(before or {}).get(r.get("Drawing id"), ()))]
         if not col or len(hits) != 1: unmatched.append(title); continue
         r = hits[0]; raw = str(st.get("text") or "").strip()
         v = int(raw) if raw.isdigit() else float(raw) if re.fullmatch(r"\d+\.\d+", raw) else raw or None
@@ -553,6 +555,7 @@ if __name__ == "__main__":
                 enrich(path)
             print(f"saved: {path} ({len(old)} trades)")
         sys.exit(0)
+    before = {r["Drawing id"]: (r.get("Fill time"), r.get("Entry time")) for r in old.values()}
     added = sum(1 for r in new if key(r) not in old); updated = len(new) - added
     moved = []
     for r in new:
@@ -574,7 +577,7 @@ if __name__ == "__main__":
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
         check_with_prices(r); apply_confirmation(r)
         if has_journal: journal.autofill_decision(r)
-    marked, unmarked = apply_marks(marks, rows, columns(has_journal, path)) if marks else ([], [])
+    marked, unmarked = apply_marks(marks, rows, columns(has_journal, path), before) if marks else ([], [])
     if confirmed:
         print("confirmed" + (" — dry run, nothing written" if a.dry_run else "") + ":")
         for r in confirmed: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  "
