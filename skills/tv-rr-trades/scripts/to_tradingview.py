@@ -14,7 +14,7 @@ short trades stay visible; the close point stays at the real exit. The style com
 
 --mark COLUMN adds a text drawing per trade with that column's value (the first of several columns that has one, e.g.
 --mark "Touch #" "Touch # (auto)"): below the stop for a long, above it for a short, on the bar before the entry
-candle, named "<date> <first word of the first COLUMN> <value>" (e.g. "1 Jun 26 Touch 2") and placed next to its
+candle, named "<date time> <first word of the first COLUMN> <value>" (e.g. "1 Jun 26 18:15 Touch 2") and placed next to its
 position, so the object tree lists each position with its text under it. TradingView anchors text at its top, so a long's text sits --mark-gap pts under the stop and a short's
 --mark-gap + --mark-height pts over it. The style comes from text_template.json; trades with no value get no text.
 
@@ -86,7 +86,7 @@ def mark(row, base, cols, gap, height):
     src["id"] = "".join(random.choices(string.ascii_letters + string.digits, k=6)); d["modelId"] = str(uuid.uuid4())
     text = f"{v:g}" if isinstance(v, (int, float)) else str(v)
     src["state"].update(symbol=row["Symbol"], interval=tf, text=text,
-                        title=f'{row.get("Fill time") or row["Entry time"]:%-d %b %y} {cols[0].split()[0]} {text}')
+                        title=f'{row.get("Fill time") or row["Entry time"]:%-d %b %y %H:%M} {cols[0].split()[0]} {text}')
     price = row["Stop"] - gap if long_ else row["Stop"] + gap + height
     src["points"] = [{"time_t": epoch(row["Entry (UTC)"]) - BAR_SECONDS.get(tf, 300), "offset": 0, "price": price, "interval": tf}]
     return d
