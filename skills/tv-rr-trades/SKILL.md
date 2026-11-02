@@ -78,7 +78,10 @@ TradingView chart with ⌘V. Use when the user asks to put trades back on a char
   that has one (9 EMA retest: `--mark "Touch #" "Touch # (auto)"` for the touch number, your own count first). It sits on
   the bar before the entry candle, `--mark-gap` pts (default 5) below a long's stop, or above a short's (plus
   `--mark-height`, default 12, since TradingView anchors text at its top). Style from `scripts/text_template.json`.
-  `extract.py` skips these text drawings when they are copied back out with the trades.
+  Copied back out (with or without the positions), `extract.py` writes each mark's text into its trade's column: the
+  trade from the date and time in the mark's name, the first column starting with its word ("Touch" → "Touch #"). So
+  the user can renumber the touches on the chart and copy them back. A mark still showing the value it was drawn with
+  (including the auto count standing in for an empty column) changes nothing; changes are listed in the run's output.
 - **Box width:** at least 40 minutes (`--min-minutes`), so a 5-minute trade is still easy to spot; the close point
   stays at the real exit.
 - **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).

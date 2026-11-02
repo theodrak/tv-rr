@@ -7,6 +7,8 @@ usage: extract.py [--file CLIP.html] [--tick 0.1] [--out PATH] [--dry-run] [--re
 already there are updated ("add these filtered trades", "update these trades to missed", "mark these as taken").
 Without it, new trades are Taken. The workbook needs journal columns (journal.py init).
 --remove deletes the clipboard's drawings from the sheet ("remove these trades"); with --dry-run it only lists them.
+Text drawings named as to_tradingview.py --mark names them ("1 Jun 26 18:15 Touch 2") write their text back into the
+trade's column ("Touch" → "Touch #") when it differs from what was drawn (apply_marks).
 
 TradingView copies drawings as HTML: one <span data-tradingview-clip="…"> whose JSON holds a `sources` list, one per
 drawing. For LineToolRiskRewardLong / LineToolRiskRewardShort:
@@ -67,14 +69,43 @@ def read_clipboard():
     return ""
 
 
-def drawings(text):
+MARK_TITLE = re.compile(r"^(\d{1,2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}) (\S+) ")
+
+
+def drawings(text, marks=None):
+    """The risk/reward drawings, and how many others were skipped. Text drawings named as to_tradingview.py --mark
+    names them ("1 Jun 26 18:15 Touch 2") go in `marks` when a list is given."""
     out, skipped = [], 0
     for raw in re.findall(r'data-tradingview-clip="([^"]*)"', text):
         for src in json.loads(html.unescape(raw)).get("sources", []):
             so = src.get("source", {})
             if so.get("type") in RR_TYPES: out.append(so)
+            elif marks is not None and so.get("type") == "LineToolText" and MARK_TITLE.match(so.get("state", {}).get("title") or ""):
+                marks.append(so)
             else: skipped += 1
     return out, skipped
+
+
+def apply_marks(marks, rows, headers):
+    """Write each mark's text into its trade's column: the trade whose fill (or entry) time and symbol are in the
+    mark's name, the column the first header starting with the name's word ("Touch" → "Touch #"). A mark that only
+    repeats the value it was drawn with (the column's own, or the computed fallback when the column was empty) changes
+    nothing. Returns (changed, unmatched) for the report."""
+    changed, unmatched = [], []
+    for so in marks:
+        st = so["state"]; title = st.get("title") or ""; m = MARK_TITLE.match(title)
+        col = next((h for h in headers if h.split()[0] == m.group(2)), None)
+        try: t = dt.datetime.strptime(m.group(1), "%d %b %y %H:%M")
+        except ValueError: t = None
+        hits = [r for r in rows if str(r.get("Symbol")) == st.get("symbol") and t in (r.get("Fill time"), r.get("Entry time"))]
+        if not col or len(hits) != 1: unmatched.append(title); continue
+        r = hits[0]; raw = str(st.get("text") or "").strip()
+        v = int(raw) if raw.isdigit() else float(raw) if re.fullmatch(r"\d+\.\d+", raw) else raw or None
+        shown = r.get(col) if r.get(col) not in (None, "") else next(
+            (r.get(h) for h in headers if h != col and h.split()[0] == m.group(2) and r.get(h) not in (None, "")), None)
+        if v == shown: continue
+        changed.append((r, col, r.get(col), v)); r[col] = v
+    return changed, unmatched
 
 
 def pow10(x):
@@ -495,8 +526,8 @@ if __name__ == "__main__":
                  f"journal.py init \"{path}\", then run again.")
     if config.load()["exports_dirs"]: prices.ingest(verbose=False)
     text = "" if a.recheck else Path(a.file).read_text() if a.file else read_clipboard()
-    found, skipped = drawings(text)
-    if not found and not a.recheck:
+    marks = []; found, skipped = drawings(text, marks)
+    if not found and not marks and not a.recheck:
         sys.exit("No TradingView risk/reward drawings on the clipboard. In TradingView, select the Long/Short Position "
                  "tools, copy them (Cmd-C / Ctrl-C), then run again." + (f" ({skipped} other drawings were skipped.)" if skipped else ""))
     now = dt.datetime.now(TZ).replace(tzinfo=None, microsecond=0)
@@ -543,13 +574,14 @@ if __name__ == "__main__":
         if r.get("Entry (UTC)"): r["Entry time"] = local(int(r["Entry (UTC)"].replace(tzinfo=UTC).timestamp()))
         check_with_prices(r); apply_confirmation(r)
         if has_journal: journal.autofill_decision(r)
+    marked, unmarked = apply_marks(marks, rows, columns(has_journal, path)) if marks else ([], [])
     if confirmed:
         print("confirmed" + (" — dry run, nothing written" if a.dry_run else "") + ":")
         for r in confirmed: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  "
                                   f"{r.get('Confirmed outcome') or 'cleared'}  → {r.get('Check') or 'no flag'}")
     elif a.recheck:
         print(f"re-checked {len(rows)} trades" + (" — dry run, nothing written" if a.dry_run else ""))
-    else:
+    elif found:
         print(f"{len(found)} risk/reward drawings on the clipboard ({skipped} other drawings skipped): {added} new, {updated} updated"
               + (" — dry run, nothing written" if a.dry_run else ""))
         print("updated from the clipboard:")
@@ -558,6 +590,11 @@ if __name__ == "__main__":
         if moved:
             print("amended since logged:")
             for r, ch in moved: print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  " + "; ".join(ch))
+    if marks:
+        print(f"{len(marks)} text marks on the clipboard: {len(marked)} changed" + (" — dry run, nothing written" if a.dry_run else ""))
+        for r, col, was, v in marked:
+            print(f"  {r['Direction']:5} {r['Symbol']} {r['Entry time']:%a %d %b %Y %H:%M}  {col}: {was if was not in (None, '') else '(empty)'} → {v}")
+        for t in unmarked: print(f"  no single trade for mark '{t}'")
     todo = [r for r in rows if str(r.get("Check") or "").startswith("CONFIRM")]
     if todo:
         print(f"{len(todo)} to confirm in Excel (set 'Confirmed outcome'):")
