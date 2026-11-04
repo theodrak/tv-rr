@@ -36,6 +36,7 @@ GRADES = ["A+", "A", "B", "C", "D", "F"]
 FILTERS = ["Filter 1", "Filter 2", "Filter 3"]
 CONFS = ["Confluence 1", "Confluence 2", "Confluence 3"]
 REASONS = ["Grade reason 1", "Grade reason 2", "Grade reason 3"]
+LIST_ROWS = 1000  # rows of the Lists sheet the dropdowns read (OFFSET … COUNTA to row 1000) and that are text-formatted
 COLS = (["Decision"] + FILTERS + ["Filter notes"] + CONFS + ["Auto confluence", "Grade", "Rule grade"] + REASONS
         + ["Grade notes", "General notes"])
 COMPUTED = ("Rule grade",)              # rewritten on every save
@@ -124,6 +125,10 @@ def write_lists(wb, saved=None, distance=None, unit="pts"):
     ws.freeze_panes = "A2"
     for row in ws.iter_rows():
         for c in row: c.alignment = Alignment(vertical="top")
+    # Text format down the three lists, so a reason typed in Excel as "- Weak momentum" stays text (Excel would
+    # otherwise read a leading + or - as the start of a formula)
+    for j in range(1, 4):
+        for i in range(2, LIST_ROWS + 1): ws.cell(i, j).number_format = "@"
 
     au = wb.create_sheet("Auto confluence")
     if "Auto confluence" in saved:
@@ -199,6 +204,8 @@ def style(ws, cols, n_rows):
                             promptTitle=title, prompt="Pick from the list; add choices on the Lists sheet.")
         ws.add_data_validation(dv)
         for c in targets: dv.add(rng(c))
+    for c in FILTERS + CONFS + REASONS:  # text cells: a picked or typed "+ …" / "- …" stays text, not a formula
+        for r in range(2, last + 1): ws[f"{L[c]}{r}"].number_format = "@"
     f = lambda cs: f"{L[cs[0]]}{{r}}:{L[cs[-1]]}{{r}}"
     filt, conf, rea = f(FILTERS), f(CONFS), f(REASONS)
     for r in range(2, n_rows + 2):
