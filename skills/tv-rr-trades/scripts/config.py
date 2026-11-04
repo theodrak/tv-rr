@@ -107,12 +107,14 @@ def gallery_for(wb):
 
 def extras_for(wb):
     """A strategy's own columns for a workbook, from every workbooks entry whose key appears in its file name
-    (case-insensitive): {"columns": [...], "dropdowns": {...}, "plugins": [...], "after": column or None}."""
-    out = {"columns": [], "dropdowns": {}, "plugins": [], "after": None, "differs": {}}
+    (case-insensitive): {"columns": [...], "dropdowns": {...}, "plugins": [...], "after": column or None,
+    "place": {column: the column it goes after}} — place moves single columns away from the "after" group."""
+    out = {"columns": [], "dropdowns": {}, "plugins": [], "after": None, "differs": {}, "place": {}}
     for frag, x in (cached().get("workbooks") or {}).items():
         if frag.lower() not in Path(wb).stem.lower(): continue
         out["columns"] += [c for c in x.get("columns", []) if c not in out["columns"]]
         out["dropdowns"].update(x.get("dropdowns", {})); out["differs"].update(x.get("differs", {})); out["plugins"] += x.get("plugins", [])
+        out["place"].update(x.get("place", {}))
         out["after"] = x.get("after") or out["after"]
     return out
 

@@ -138,7 +138,8 @@ def vwap_direction(recent, sign):
 
 def plugins(path):
     """The workbook's plugins (config workbooks › plugins): modules with COLUMNS and compute(row, t0) → {column: value},
-    for columns that belong to one strategy rather than to every trade log."""
+    for columns that belong to one strategy rather than to every trade log. An optional FILLS = {column: {value: hex
+    colour}} shades those values; a column's entry can instead be a function of the value returning a hex colour or None."""
     import importlib.util
     out = []
     for p in config.extras_for(path)["plugins"]:
@@ -224,8 +225,12 @@ def enrich(path):
             if c == "VWAP dist" and out[c] is not None and out[c] < 0: cell.fill = bad
         for m in plug:
             got = m.compute(v, t0) if t0 and v.get("Symbol") else {}
+            shade = getattr(m, "FILLS", {})  # {column: {value: hex colour}}: a plugin's own highlights
             for c in m.COLUMNS:
-                ws.cell(i, col[c], got.get(c)).alignment = Alignment(horizontal="center"); out[c] = got.get(c)
+                cell = ws.cell(i, col[c], got.get(c)); cell.alignment = Alignment(horizontal="center"); out[c] = got.get(c)
+                sh = shade.get(c) or {}
+                hx = sh(got.get(c)) if callable(sh) else sh.get(got.get(c))
+                cell.fill = PatternFill("solid", fgColor=hx) if hx else PatternFill()
         if "Auto confluence" in col and v.get("Symbol") not in auto_cache: auto_cache[v.get("Symbol")] = journal.auto_settings(wb, v.get("Symbol"))
         auto = auto_cache.get(v.get("Symbol")) if "Auto confluence" in col else None
         if auto and t0 and v.get("Symbol"):

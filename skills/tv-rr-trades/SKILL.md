@@ -69,15 +69,23 @@ When the `tv-rr-analysis` skill is installed, its what-if columns and Breakdown 
 The reverse of logging: logged trades go back on the clipboard as Long/Short Position drawings the user pastes into a
 TradingView chart with ⌘V. Use when the user asks to put trades back on a chart, redraw them, or see them in TradingView.
 
-`uv run -q --with openpyxl --with pyobjc-framework-Cocoa python scripts/to_tradingview.py <selectors> [--workbook PATH] [--label TEXT] [--dry-run]`
+`uv run -q --with openpyxl --with pyobjc-framework-Cocoa python scripts/to_tradingview.py <selectors> [--workbook PATH] [--label TEXT] [--mark COLUMN …] [--dry-run]`
 
 - **Selectors** (at least one, they combine): `--id ID …` (the Drawing id column), `--date 2026-07-01` or
   `--date 2026-07-01..2026-07-31` (entry date as shown in the log), `--direction long|short`, `--outcome TP|Stop|…`,
   `--last N` (the N most recent after the other filters).
+- **Marks:** `--mark COLUMN …` adds a text drawing per trade with that column's value, the first of the columns given
+  that has one (9 EMA retest: `--mark "Touch #" "Touch # (auto)"` for the touch number, your own count first). It sits on
+  the bar before the entry candle, `--mark-gap` pts (default 5) below a long's stop, or above a short's (plus
+  `--mark-height`, default 12, since TradingView anchors text at its top). Style from `scripts/text_template.json`.
+  Copied back out (with or without the positions), `extract.py` writes each mark's text into its trade's column: the
+  trade from the date and time in the mark's name, the first column starting with its word ("Touch" → "Touch #"). So
+  the user can renumber the touches on the chart and copy them back. A mark still showing the value it was drawn with
+  (including the auto count standing in for an empty column) changes nothing; changes are listed in the run's output.
 - **Box width:** at least 40 minutes (`--min-minutes`), so a 5-minute trade is still easy to spot; the close point
   stays at the real exit.
 - **Workbook:** the config default unless `--workbook` names another (e.g. the replay or forward-testing log).
-- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R>`; the label defaults to the
+- **Each drawing is named** `<label> <entry date time> <direction> <outcome> <result R> <decision>` (the journal's Taken / Filtered / Missed, when the log has it); the label defaults to the
   workbook's name without "Back/Forward/Replay Testing". `--label "9EMA"` overrides it, `--label ""` drops it.
 - **TradingView gives pasted drawings new ids**, so each drawing's name ends "· id <the row's id>". When it is copied
   back out and logged, `extract.py` finds the row from that id (or, for names without one, from the date and time — fill or entry — and
@@ -133,7 +141,7 @@ within 10 pts.
 **A strategy's own columns** go in the config, not in these scripts: `workbooks` › a fragment of the workbook's file
 name (e.g. `"9 Ema Retest"`, covering its back, forward and replay logs) › `columns` (the user's own, kept on every
 rebuild like the journal's), `dropdowns` (`{column: [choices]}`) and `plugins` (Python files with `COLUMNS` and
-`compute(row, t0) → {column: value}`, filled in by tv-rr-analysis after every save) and `after` (the column they follow, e.g. `"Decision"`; list a plugin column in `columns` to place it there too), and `differs` (`{your column: another}`: yours turns yellow when filled in and different, e.g. your call vs a worked-out one). The strategy's skill owns the plugin.
+`compute(row, t0) → {column: value}`, filled in by tv-rr-analysis after every save) and `after` (the column they follow, e.g. `"Decision"`; list a plugin column in `columns` to place it there too), and `differs` (`{your column: another}`: yours turns yellow when filled in and different, e.g. your call vs a worked-out one). `place` (`{column: the column it goes after}`) moves single columns out of the `after` group, e.g. a notes column next to Grade notes. The strategy's skill owns the plugin.
 
 ## Price data
 
